@@ -138,6 +138,29 @@
   .done-msg .big{font-size:3rem}
   .done-msg h2{font-family:Georgia,serif;font-size:1.6rem;margin:10px 0}
   .done-msg p{color:#7a7066}
+
+  /* list view */
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .chip{padding:6px 12px;border:1.5px solid var(--line);border-radius:99px;background:#fff;font-size:.8rem;font-weight:600;color:#7a7066;cursor:pointer;transition:.15s;font-family:inherit}
+  .chip:hover{border-color:var(--rose)}
+  .chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .list{display:flex;flex-direction:column;gap:10px}
+  .list-item{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:#fff}
+  .list-item .li-body{flex:1;min-width:0}
+  .list-item .li-cat{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:99px;font-weight:700;display:inline-block;margin-bottom:6px}
+  .list-item .li-de{font-weight:600;line-height:1.3}
+  .list-item .li-fr{color:var(--rose-deep);margin-top:3px;line-height:1.3}
+  .li-check{font-size:1.1rem;color:var(--leaf);flex-shrink:0;width:1.1em;text-align:center}
+  .li-speak{flex-shrink:0}
+  .list-empty{text-align:center;color:#9a9089;padding:30px 10px;font-style:italic}
+
+  /* add form */
+  .form-field{margin-bottom:16px}
+  .form-field label{display:block;font-size:.8rem;font-weight:700;color:#7a7066;margin-bottom:6px;letter-spacing:.04em}
+  .form-field input,.form-field select{width:100%;padding:12px 14px;font-size:1rem;border:1.5px solid var(--line);border-radius:12px;background:#fff;font-family:inherit;color:var(--ink)}
+  .form-field input:focus,.form-field select:focus{outline:none;border-color:var(--sky)}
+  .form-msg{margin-top:4px;font-weight:600;font-size:.92rem;min-height:1.3em}
+  .custom-count{font-size:.85rem;color:#8a8075;margin-top:18px;text-align:center}
 </style>
 </head>
 <body>
@@ -161,6 +184,8 @@
     <div class="tab" data-mode="type">Schreiben</div>
     <div class="tab" data-mode="reverse">FR → DE</div>
     <div class="tab" data-mode="listen">Hören</div>
+    <div class="tab" data-mode="list">Liste</div>
+    <div class="tab" data-mode="add">+ Satz</div>
   </div>
 
   <div class="card" id="card"><!-- gefüllt per JS --></div>
@@ -185,7 +210,7 @@
 
 <script>
 /* ---------- Satzpaare DE → FR ---------- */
-const DATA = [
+const BUILTIN = [
   // ROT — Vorstellen
   {c:"Vorstellen", fr:"Bonjour, je m'appelle … Et toi ?", de:"Hallo, ich heiße … Und du?"},
   {c:"Vorstellen", fr:"Tu as quel âge ?", de:"Wie alt bist du?"},
@@ -245,21 +270,28 @@ const DATA = [
 
 /* ---------- State ---------- */
 const STORE_KEY = "vokabeltrainer_fr_v1";
+let DATA = [];
 let state = loadState();
 let mode = "flip";
+let listFilter = "all";
+rebuildData();
 let order = [...DATA.keys()];
 let pos = 0;
 let revealed = false;
+
+// eingebaute + eigene Sätze zusammenführen (eigene hinten → Indizes stabil)
+function rebuildData(){ DATA = BUILTIN.concat(state.custom || []); }
 
 function loadState(){
   try{
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
     if(s && s.known){
       if(s.rate == null) s.rate = 0.8;
+      if(!Array.isArray(s.custom)) s.custom = [];
       return s;
     }
   }catch(e){}
-  return {known:{}, autoSpeak:false, shuffle:false, rate:0.8};
+  return {known:{}, autoSpeak:false, shuffle:false, rate:0.8, custom:[]};
 }
 function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
@@ -305,6 +337,8 @@ function buildOrder(){
 }
 
 function render(){
+  if(mode === "list"){ renderList(); return; }
+  if(mode === "add"){ renderAdd(); return; }
   if(pos >= order.length){ renderDone(); return; }
   revealed = false;
   const item = current();
@@ -345,7 +379,7 @@ function render(){
     }
 
     html += `
-      <div class="answer ${isType?'':'hidden'}" id="answer">${backText}
+      <div class="answer hidden" id="answer">${backText}
         <button class="speak" data-say="${esc(backText)}" data-lang="${backLang}" title="Vorlesen">🔊</button>
       </div>`;
   }
@@ -479,6 +513,100 @@ function renderDone(){
   updateProgress();
 }
 
+function renderList(){
+  const cats = [...new Set(DATA.map(d=>d.c))];
+  let chips = `<button class="chip ${listFilter==='all'?'active':''}" data-cat="all">Alle</button>`;
+  cats.forEach(c=>{
+    chips += `<button class="chip ${listFilter===c?'active':''}" data-cat="${esc(c)}">${c}</button>`;
+  });
+
+  const items = DATA.map((d,i)=>({d,i})).filter(x=> listFilter==='all' || x.d.c===listFilter);
+  let rows = items.map(({d,i})=>{
+    const known = state.known[i];
+    return `<div class="list-item">
+      <div class="li-body">
+        <span class="li-cat" style="${catStyle(d.c)}">${d.c}</span>
+        <div class="li-de">${d.de}</div>
+        <div class="li-fr">${d.fr}</div>
+      </div>
+      <button class="speak li-speak" data-say="${esc(d.fr)}" data-lang="fr" title="Vorlesen">🔊</button>
+      <span class="li-check">${known?'✓':''}</span>
+    </div>`;
+  }).join('');
+  if(!rows) rows = `<div class="list-empty">Keine Sätze in dieser Kategorie.</div>`;
+
+  card.innerHTML = `<div class="filter-row" id="filterRow">${chips}</div><div class="list">${rows}</div>`;
+  card.querySelectorAll('.speak').forEach(b=> b.onclick = ()=> speak(b.dataset.say, b.dataset.lang));
+  document.getElementById('filterRow').onclick = e=>{
+    const chip = e.target.closest('.chip'); if(!chip) return;
+    listFilter = chip.dataset.cat;
+    renderList();
+  };
+  updateProgress();
+  document.getElementById('cardPos').textContent = `${items.length} ${items.length===1?'Satz':'Sätze'}`;
+}
+
+function renderAdd(){
+  const cats = [...new Set(BUILTIN.map(d=>d.c))];
+  const opts = cats.map(c=>`<option value="${esc(c)}">${c}</option>`).join('');
+  const n = (state.custom||[]).length;
+  card.innerHTML = `
+    <span class="cat-tag" style="${catStyle('')}">Eigener Satz</span>
+    <div class="form-field">
+      <label for="addDe">Deutsch</label>
+      <input type="text" id="addDe" placeholder="z. B. Wie geht es dir?" autocomplete="off">
+    </div>
+    <div class="form-field">
+      <label for="addFr">Français</label>
+      <input type="text" id="addFr" placeholder="z. B. Comment ça va ?" autocomplete="off">
+    </div>
+    <div class="form-field">
+      <label for="addCat">Kategorie</label>
+      <select id="addCat">${opts}<option value="__new">+ Neue Kategorie…</option></select>
+    </div>
+    <div class="form-field" id="newCatField" style="display:none">
+      <label for="addCatNew">Neue Kategorie</label>
+      <input type="text" id="addCatNew" placeholder="z. B. Schule" autocomplete="off">
+    </div>
+    <div class="controls"><button class="btn btn-show" id="addBtn">Satz hinzufügen</button></div>
+    <div class="form-msg" id="addMsg"></div>
+    <div class="custom-count">${n===0?'Noch keine eigenen Sätze.':(n===1?'1 eigener Satz hinzugefügt.':n+' eigene Sätze hinzugefügt.')}</div>
+  `;
+
+  const catSel = document.getElementById('addCat');
+  const newCatField = document.getElementById('newCatField');
+  catSel.onchange = ()=>{ newCatField.style.display = catSel.value==='__new' ? 'block':'none'; };
+
+  const deEl = document.getElementById('addDe');
+  const frEl = document.getElementById('addFr');
+  deEl.focus();
+  const submit = ()=>{
+    const de = deEl.value.trim();
+    const fr = frEl.value.trim();
+    let cat = catSel.value==='__new' ? document.getElementById('addCatNew').value.trim() : catSel.value;
+    const msg = document.getElementById('addMsg');
+    if(!de || !fr){
+      msg.style.color='var(--rose-deep)';
+      msg.textContent='Bitte Deutsch und Französisch ausfüllen.';
+      return;
+    }
+    if(!cat) cat = 'Eigene';
+    state.custom.push({c:cat, fr, de});
+    saveState();
+    rebuildData();
+    buildOrder();
+    renderAdd();
+    const m2 = document.getElementById('addMsg');
+    m2.style.color='var(--leaf)';
+    m2.textContent='Hinzugefügt! 🎉';
+  };
+  document.getElementById('addBtn').onclick = submit;
+  frEl.onkeydown = e=>{ if(e.key==='Enter') submit(); };
+
+  updateProgress();
+  document.getElementById('cardPos').textContent = '';
+}
+
 function updateProgress(){
   const total = DATA.length;
   const learned = Object.keys(state.known).length;
@@ -542,7 +670,7 @@ document.getElementById('rateTest').onclick = ()=>{
 
 document.getElementById('resetBtn').onclick = ()=>{
   if(confirm("Wirklich den ganzen Fortschritt löschen?")){
-    state = {known:{}, autoSpeak:autoSpeakEl.checked, shuffle:shuffleEl.checked, rate:state.rate};
+    state = {known:{}, autoSpeak:autoSpeakEl.checked, shuffle:shuffleEl.checked, rate:state.rate, custom:state.custom};
     saveState();
     pos=0; buildOrder(); render();
   }
