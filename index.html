@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vokabeltrainer · Deutsch → Französisch</title>
+<style>
+  :root{
+    --paper:#f7f3ec;
+    --ink:#2b2420;
+    --rose:#d96c75;
+    --rose-deep:#b94f59;
+    --sky:#5b8aa6;
+    --sky-deep:#3f6a83;
+    --gold:#e0a458;
+    --leaf:#6f9e6e;
+    --line:#e3dccf;
+    --card:#fffdf8;
+    --shadow:rgba(43,36,32,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    background:
+      radial-gradient(circle at 12% 8%, #fbe9e0 0%, transparent 40%),
+      radial-gradient(circle at 88% 92%, #e3edf2 0%, transparent 42%),
+      var(--paper);
+    color:var(--ink);
+    min-height:100vh;
+    padding:24px 16px 60px;
+    line-height:1.5;
+  }
+  .wrap{max-width:640px;margin:0 auto}
+
+  header{text-align:center;margin-bottom:26px}
+  .eyebrow{
+    font-size:.72rem;letter-spacing:.32em;text-transform:uppercase;
+    color:var(--rose-deep);font-weight:700;margin-bottom:8px;
+  }
+  h1{
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:2.1rem;font-weight:700;line-height:1.1;
+  }
+  h1 .fr{color:var(--rose-deep);font-style:italic}
+  .sub{color:#7a7066;font-size:.95rem;margin-top:6px}
+
+  /* progress bar */
+  .prog-shell{margin:20px 0 8px}
+  .prog-track{height:10px;background:var(--line);border-radius:99px;overflow:hidden}
+  .prog-fill{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--rose));border-radius:99px;transition:width .4s ease}
+  .prog-meta{display:flex;justify-content:space-between;font-size:.8rem;color:#8a8075;margin-top:6px}
+
+  /* mode tabs */
+  .tabs{display:flex;gap:8px;margin:18px 0 22px;flex-wrap:wrap}
+  .tab{
+    flex:1;min-width:90px;padding:10px 6px;border:1.5px solid var(--line);
+    background:var(--card);border-radius:14px;cursor:pointer;text-align:center;
+    font-size:.82rem;font-weight:600;color:#7a7066;transition:.18s;
+  }
+  .tab:hover{border-color:var(--rose)}
+  .tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+  /* card */
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:22px;
+    padding:30px 26px;box-shadow:0 14px 34px var(--shadow);
+    min-height:230px;display:flex;flex-direction:column;
+  }
+  .cat-tag{
+    align-self:flex-start;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
+    background:#f0e6d8;color:#9a7b46;padding:4px 12px;border-radius:99px;font-weight:700;margin-bottom:18px;
+  }
+  .prompt{font-size:1.45rem;font-weight:600;line-height:1.35;margin-bottom:6px}
+  .prompt.small{font-size:1.15rem}
+  .answer{
+    font-size:1.45rem;line-height:1.35;color:var(--rose-deep);font-weight:600;
+    margin-top:14px;padding-top:16px;border-top:1px dashed var(--line);
+  }
+  .answer.hidden{display:none}
+  .hint{color:#9a9089;font-size:.9rem;font-style:italic;margin-top:auto;padding-top:18px}
+
+  .speak{
+    border:none;background:none;cursor:pointer;font-size:1.15rem;
+    padding:2px 6px;border-radius:8px;transition:.15s;color:var(--sky-deep);
+    vertical-align:middle;
+  }
+  .speak:hover{background:#e3edf2}
+  .speak:active{transform:scale(.9)}
+
+  /* typing input */
+  .type-box{margin-top:16px;display:none}
+  .type-box.show{display:block}
+  .type-box input{
+    width:100%;padding:13px 15px;font-size:1.1rem;border:1.5px solid var(--line);
+    border-radius:12px;background:#fff;font-family:inherit;color:var(--ink);
+  }
+  .type-box input:focus{outline:none;border-color:var(--sky)}
+  .feedback{margin-top:10px;font-weight:600;font-size:.95rem;min-height:1.2em}
+  .feedback.ok{color:var(--leaf)}
+  .feedback.no{color:var(--rose-deep)}
+
+  /* controls */
+  .controls{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap}
+  button.btn{
+    flex:1;min-width:120px;padding:14px;border:none;border-radius:14px;
+    font-size:1rem;font-weight:700;cursor:pointer;transition:.16s;font-family:inherit;
+  }
+  .btn-show{background:var(--sky);color:#fff}
+  .btn-show:hover{background:var(--sky-deep)}
+  .btn-next{background:var(--rose);color:#fff}
+  .btn-next:hover{background:var(--rose-deep)}
+  .btn-ghost{background:#fff;border:1.5px solid var(--line)!important;color:#7a7066}
+  .btn-ghost:hover{border-color:var(--rose)!important}
+
+  .rate-row{display:flex;gap:8px;margin-top:12px}
+  .rate-row button{
+    flex:1;padding:11px;border-radius:12px;border:1.5px solid var(--line);
+    background:#fff;font-weight:700;cursor:pointer;font-size:.9rem;transition:.16s;font-family:inherit;
+  }
+  .rate-known{color:var(--leaf)}.rate-known:hover{background:#eef5ee;border-color:var(--leaf)}
+  .rate-again{color:var(--gold)}.rate-again:hover{background:#fbf3e6;border-color:var(--gold)}
+
+  /* footer settings */
+  .speed-row{margin-top:22px;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 16px;font-size:.9rem;color:#7a7066;flex-wrap:wrap}
+  .speed-row label{font-weight:600;white-space:nowrap}
+  .speed-row input[type=range]{flex:1;min-width:120px;accent-color:var(--rose);height:4px}
+  .speed-val{font-variant-numeric:tabular-nums;font-weight:700;color:var(--rose-deep);min-width:48px;text-align:right}
+  .speed-test{border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:7px 13px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--sky-deep);font-size:.85rem;transition:.15s}
+  .speed-test:hover{border-color:var(--sky);background:#eef4f7}
+  .settings{margin-top:14px;display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:#8a8075;flex-wrap:wrap;gap:10px}
+  .settings label{display:flex;align-items:center;gap:7px;cursor:pointer}
+  .reset{background:none;border:none;color:var(--rose-deep);cursor:pointer;text-decoration:underline;font-size:.85rem;font-family:inherit}
+  .toggle{display:flex;align-items:center;gap:7px}
+  .toggle input{width:16px;height:16px;accent-color:var(--rose)}
+
+  .done-msg{text-align:center;padding:30px 10px}
+  .done-msg .big{font-size:3rem}
+  .done-msg h2{font-family:Georgia,serif;font-size:1.6rem;margin:10px 0}
+  .done-msg p{color:#7a7066}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Vokabeltrainer</div>
+    <h1>Deutsch <span class="fr">→ Français</span></h1>
+    <p class="sub">Sätze rund um Familie, Hobbys, Handy &amp; Freunde</p>
+  </header>
+
+  <div class="prog-shell">
+    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+    <div class="prog-meta">
+      <span id="progText">0 von 0 gelernt</span>
+      <span id="cardPos"></span>
+    </div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-mode="flip">Karten</div>
+    <div class="tab" data-mode="type">Schreiben</div>
+    <div class="tab" data-mode="reverse">FR → DE</div>
+    <div class="tab" data-mode="listen">Hören</div>
+  </div>
+
+  <div class="card" id="card"><!-- gefüllt per JS --></div>
+
+  <div class="speed-row">
+    <label for="rate">🐢 Sprechtempo</label>
+    <input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="0.8">
+    <span class="speed-val" id="rateVal">0.80×</span>
+    <button class="speed-test" id="rateTest" title="Beispiel anhören">▶︎ Test</button>
+  </div>
+
+  <div class="settings">
+    <span class="toggle">
+      <label><input type="checkbox" id="autoSpeak"> Automatisch vorlesen</label>
+    </span>
+    <span class="toggle">
+      <label><input type="checkbox" id="shuffle"> Mischen</label>
+    </span>
+    <button class="reset" id="resetBtn">Fortschritt zurücksetzen</button>
+  </div>
+</div>
+
+<script>
+/* ---------- Satzpaare DE → FR ---------- */
+const DATA = [
+  // ROT — Vorstellen
+  {c:"Vorstellen", fr:"Bonjour, je m'appelle … Et toi ?", de:"Hallo, ich heiße … Und du?"},
+  {c:"Vorstellen", fr:"Tu as quel âge ?", de:"Wie alt bist du?"},
+  {c:"Vorstellen", fr:"Où est-ce que tu habites ? / Tu habites où ?", de:"Wo wohnst du?"},
+  {c:"Vorstellen", fr:"Qu'est-ce que tu aimes faire ? / Tu as des hobbys ?", de:"Was machst du gern? / Hast du Hobbys?"},
+  {c:"Vorstellen", fr:"Tu as des frères et sœurs ?", de:"Hast du Geschwister?"},
+  {c:"Vorstellen", fr:"Tu es en quelle classe ?", de:"In welche Klasse gehst du?"},
+
+  // GELB — Kleidung
+  {c:"Kleidung", fr:"Tu préfères le pantalon ou la robe ?", de:"Magst du lieber die Hose oder das Kleid?"},
+  {c:"Kleidung", fr:"Quelle marque est-ce que tu préfères ?", de:"Welche Marke magst du am liebsten?"},
+  {c:"Kleidung", fr:"Tu aimes un look sportif ?", de:"Magst du einen sportlichen Look?"},
+  {c:"Kleidung", fr:"Tu préfères les vêtements décontractés ?", de:"Magst du lieber lässige Kleidung?"},
+  {c:"Kleidung", fr:"Quel est ton style à l'école ?", de:"Was ist dein Stil in der Schule?"},
+  {c:"Kleidung", fr:"Tu portes une chemise ?", de:"Trägst du ein Hemd?"},
+  {c:"Kleidung", fr:"Quelles couleurs est-ce que tu préfères ?", de:"Welche Farben magst du am liebsten?"},
+
+  // GRÜN — Musik
+  {c:"Musik", fr:"Quelle musique est-ce que tu écoutes ?", de:"Welche Musik hörst du?"},
+  {c:"Musik", fr:"Quel est ton artiste préféré ?", de:"Wer ist dein Lieblingskünstler?"},
+  {c:"Musik", fr:"Tu écoutes sur Spotify ou sur Apple Music ?", de:"Hörst du über Spotify oder Apple Music?"},
+  {c:"Musik", fr:"Tu écoutes des podcasts ? Quel podcast est-ce que tu écoutes ?", de:"Hörst du Podcasts? Welchen Podcast hörst du?"},
+  {c:"Musik", fr:"Quand est-ce que tu écoutes de la musique ?", de:"Wann hörst du Musik?"},
+
+  // ORANGE — Handy
+  {c:"Handy", fr:"Combien de temps est-ce que tu passes au portable ?", de:"Wie viel Zeit verbringst du am Handy?"},
+  {c:"Handy", fr:"Quels jeux est-ce que tu joues sur ton portable ?", de:"Welche Spiele spielst du auf deinem Handy?"},
+  {c:"Handy", fr:"Quel est ton fond d'écran ?", de:"Was ist dein Hintergrundbild?"},
+  {c:"Handy", fr:"Quel modèle de portable as-tu ?", de:"Welches Handy-Modell hast du?"},
+  {c:"Handy", fr:"Ta vie est meilleure, avec ou sans portable ? Pourquoi ? / Pourquoi pas ?", de:"Ist dein Leben mit oder ohne Handy besser? Warum? / Warum nicht?"},
+  {c:"Handy", fr:"Qu'est-ce que tu fais avec ton portable ?", de:"Was machst du mit deinem Handy?"},
+
+  // BLAU — Hobbys
+  {c:"Hobbys", fr:"Tu as des hobbys ?", de:"Hast du Hobbys?"},
+  {c:"Hobbys", fr:"Quels hobbys est-ce que tu fais ?", de:"Welche Hobbys machst du?"},
+  {c:"Hobbys", fr:"Est-ce que tu aimes ton hobby ? Pourquoi ?", de:"Magst du dein Hobby? Warum?"},
+  {c:"Hobbys", fr:"Où est-ce que tu fais ton hobby ?", de:"Wo machst du dein Hobby?"},
+  {c:"Hobbys", fr:"Tu passes beaucoup de temps à faire ton hobby ?", de:"Verbringst du viel Zeit mit deinem Hobby?"},
+
+  // ROSA — Freunde
+  {c:"Freunde", fr:"C'est qui sur la photo ?", de:"Wer ist auf dem Foto?"},
+  {c:"Freunde", fr:"Comment il s'appelle ? / Comment elle s'appelle ?", de:"Wie heißt er? / Wie heißt sie?"},
+  {c:"Freunde", fr:"Où est-ce qu'il habite ? / Où est-ce qu'elle habite ?", de:"Wo wohnt er? / Wo wohnt sie?"},
+  {c:"Freunde", fr:"Comment est-ce que tu as rencontré ton meilleur ami / ta meilleure amie pour la première fois ?", de:"Wie hast du deinen besten Freund / deine beste Freundin zum ersten Mal kennengelernt?"},
+  {c:"Freunde", fr:"Il est comment ton meilleur ami ? / Elle est comment ta meilleure amie ?", de:"Wie ist dein bester Freund? / Wie ist deine beste Freundin?"},
+  {c:"Freunde", fr:"Qu'est-ce que vous aimez faire ensemble ?", de:"Was macht ihr gern zusammen?"},
+
+  // LILA — Nachbarschaft
+  {c:"Nachbarschaft", fr:"C'est comment dans ton quartier ?", de:"Wie ist es in deinem Viertel?"},
+  {c:"Nachbarschaft", fr:"Tu habites où ? / Où est-ce que tu habites ?", de:"Wo wohnst du?"},
+  {c:"Nachbarschaft", fr:"Quelles activités est-ce que tu fais dans ta ville ?", de:"Welche Aktivitäten machst du in deiner Stadt?"},
+  {c:"Nachbarschaft", fr:"Qu'est-ce qu'on peut faire dans ta ville / dans ton quartier ?", de:"Was kann man in deiner Stadt / in deinem Viertel machen?"},
+  {c:"Nachbarschaft", fr:"Quel endroit est-ce que tu aimes dans ton quartier ? / Quel est ton endroit préféré dans ton quartier ? - Pourquoi ?", de:"Welchen Ort magst du in deinem Viertel? / Was ist dein Lieblingsort in deinem Viertel? – Warum?"},
+  {c:"Nachbarschaft", fr:"Depuis quand est-ce que tu habites là ?", de:"Seit wann wohnst du dort?"},
+  {c:"Nachbarschaft", fr:"Qu'est-ce que tu aimes faire avec ta famille dans ton quartier ? / Qu'est-ce que tu aimes faire avec tes amis dans ton quartier ?", de:"Was machst du gern mit deiner Familie in deinem Viertel? / Was machst du gern mit deinen Freunden in deinem Viertel?"}
+];
+
+/* ---------- State ---------- */
+const STORE_KEY = "vokabeltrainer_fr_v1";
+let state = loadState();
+let mode = "flip";
+let order = [...DATA.keys()];
+let pos = 0;
+let revealed = false;
+
+function loadState(){
+  try{
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if(s && s.known){
+      if(s.rate == null) s.rate = 0.8;
+      return s;
+    }
+  }catch(e){}
+  return {known:{}, autoSpeak:false, shuffle:false, rate:0.8};
+}
+function saveState(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+}
+
+/* ---------- Speech ---------- */
+let voicesReady = false;
+function loadVoices(){ voicesReady = true; }
+if('speechSynthesis' in window){
+  speechSynthesis.onvoiceschanged = loadVoices;
+  loadVoices();
+}
+function pickVoice(lang){
+  const vs = speechSynthesis.getVoices();
+  return vs.find(v=>v.lang.toLowerCase().startsWith(lang)) || null;
+}
+function speak(text, lang){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === "fr" ? "fr-FR" : "de-DE";
+  const v = pickVoice(lang);
+  if(v) u.voice = v;
+  const base = (state.rate != null) ? state.rate : 0.8;
+  // Deutsch einen Tick schneller als Französisch
+  u.rate = lang === "fr" ? base : Math.min(base + 0.15, 1.3);
+  speechSynthesis.speak(u);
+}
+
+/* ---------- Rendering ---------- */
+const card = document.getElementById('card');
+
+function current(){ return DATA[order[pos]]; }
+
+function buildOrder(){
+  order = [...DATA.keys()];
+  if(state.shuffle){
+    for(let i=order.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [order[i],order[j]]=[order[j],order[i]];
+    }
+  }
+}
+
+function render(){
+  if(pos >= order.length){ renderDone(); return; }
+  revealed = false;
+  const item = current();
+  const isReverse = mode === "reverse";
+  const isListen = mode === "listen";
+  const isType = mode === "type";
+
+  const frontText = isReverse ? item.fr : item.de;
+  const frontLang = isReverse ? "fr" : "de";
+  const backText  = isReverse ? item.de : item.fr;
+  const backLang  = isReverse ? "de" : "fr";
+
+  let html = `<span class="cat-tag" style="${catStyle(item.c)}">${item.c}</span>`;
+
+  if(isListen){
+    html += `
+      <div class="prompt small">Hör zu und sprich nach 👂</div>
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:14px">
+        <button class="btn btn-ghost" id="playDe">🔊 Deutsch hören</button>
+        <button class="btn btn-show" id="playFr">🔊 Français écouter</button>
+      </div>
+      <div class="answer hidden" id="answer">
+        <div style="margin-bottom:8px">${item.de}</div>
+        <div style="color:var(--rose-deep)">${item.fr}</div>
+      </div>`;
+  } else {
+    html += `
+      <div class="prompt">${frontText}
+        <button class="speak" data-say="${esc(frontText)}" data-lang="${frontLang}" title="Vorlesen">🔊</button>
+      </div>`;
+
+    if(isType){
+      html += `
+        <div class="type-box show">
+          <input type="text" id="typeInput" placeholder="${isReverse?'Auf Deutsch schreiben…':'Écris en français…'}" autocomplete="off">
+          <div class="feedback" id="fb"></div>
+        </div>`;
+    }
+
+    html += `
+      <div class="answer ${isType?'':'hidden'}" id="answer">${backText}
+        <button class="speak" data-say="${esc(backText)}" data-lang="${backLang}" title="Vorlesen">🔊</button>
+      </div>`;
+  }
+
+  if(!isListen) html += `<div class="hint" id="hint">${isType?'Tippe deine Antwort und drücke Enter':'Tippe auf „Antwort zeigen"'}</div>`;
+
+  // controls
+  html += `<div class="controls">`;
+  if(isType){
+    html += `<button class="btn btn-show" id="checkBtn">Prüfen</button>`;
+  } else if(isListen){
+    html += `<button class="btn btn-ghost" id="revealTextBtn">👁 Text zeigen</button>`;
+  } else {
+    html += `<button class="btn btn-show" id="showBtn">Antwort zeigen</button>`;
+  }
+  html += `</div>`;
+
+  // rating row (shown after reveal / always for listen)
+  html += `<div class="rate-row" id="rateRow" style="display:${isListen?'flex':'none'}">
+      <button class="rate-again" id="againBtn">↻ Nochmal üben</button>
+      <button class="rate-known" id="knownBtn">✓ Kann ich</button>
+    </div>`;
+
+  card.innerHTML = html;
+  wire(isReverse, isListen, isType);
+  updateProgress();
+
+  if(state.autoSpeak && !isType){
+    speak(frontText, frontLang);
+  }
+}
+
+function wire(isReverse, isListen, isType){
+  // speak buttons
+  card.querySelectorAll('.speak').forEach(b=>{
+    b.onclick = ()=> speak(b.dataset.say, b.dataset.lang);
+  });
+
+  if(isListen){
+    const item = current();
+    document.getElementById('playDe').onclick = ()=> speak(item.de,"de");
+    document.getElementById('playFr').onclick = ()=> speak(item.fr,"fr");
+    document.getElementById('revealTextBtn').onclick = (e)=>{
+      document.getElementById('answer').classList.remove('hidden');
+      e.target.style.display = 'none';
+    };
+    document.getElementById('knownBtn').onclick = ()=> rate(true);
+    document.getElementById('againBtn').onclick = ()=> rate(false);
+    return;
+  }
+
+  if(isType){
+    const input = document.getElementById('typeInput');
+    input.focus();
+    input.onkeydown = e=>{ if(e.key==="Enter") checkAnswer(isReverse); };
+    document.getElementById('checkBtn').onclick = ()=> checkAnswer(isReverse);
+    document.getElementById('knownBtn')?.addEventListener('click',()=>rate(true));
+    document.getElementById('againBtn')?.addEventListener('click',()=>rate(false));
+    return;
+  }
+
+  // flip / reverse
+  document.getElementById('showBtn').onclick = reveal;
+  document.getElementById('knownBtn').onclick = ()=> rate(true);
+  document.getElementById('againBtn').onclick = ()=> rate(false);
+}
+
+function reveal(){
+  revealed = true;
+  document.getElementById('answer').classList.remove('hidden');
+  document.getElementById('showBtn').style.display='none';
+  document.getElementById('rateRow').style.display='flex';
+  const hint = document.getElementById('hint'); if(hint) hint.style.display='none';
+  if(state.autoSpeak){
+    const a = document.getElementById('answer').querySelector('.speak');
+    if(a) speak(a.dataset.say, a.dataset.lang);
+  }
+}
+
+function norm(s){
+  return s.toLowerCase()
+    .replace(/[.,!?;:«»"']/g,'')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function checkAnswer(isReverse){
+  const input = document.getElementById('typeInput');
+  const fb = document.getElementById('fb');
+  const item = current();
+  const target = isReverse ? item.de : item.fr;
+  const ans = norm(input.value);
+  if(!ans){ input.focus(); return; }
+  // accept if matches one of the slash-variants
+  const variants = target.split('/').map(v=>norm(v));
+  const ok = variants.some(v=> v===ans || norm(target)===ans);
+  if(ok){
+    fb.textContent = "Richtig! 🎉";
+    fb.className = "feedback ok";
+  } else {
+    fb.innerHTML = `Fast! Richtig ist: <span style="color:var(--rose-deep)">${target}</span>`;
+    fb.className = "feedback no";
+  }
+  document.getElementById('answer').classList.remove('hidden');
+  document.getElementById('rateRow').style.display='flex';
+  document.getElementById('checkBtn').style.display='none';
+  if(state.autoSpeak) speak(target, isReverse?"de":"fr");
+}
+
+function rate(known){
+  const id = order[pos];
+  if(known) state.known[id] = true;
+  else delete state.known[id];
+  saveState();
+  pos++;
+  render();
+}
+
+function renderDone(){
+  const total = DATA.length;
+  const learned = Object.keys(state.known).length;
+  card.innerHTML = `
+    <div class="done-msg">
+      <div class="big">🌟</div>
+      <h2>Durchgespielt!</h2>
+      <p>Du hast <strong>${learned} von ${total}</strong> Sätzen als „kann ich" markiert.</p>
+      <div class="controls" style="justify-content:center">
+        <button class="btn btn-next" id="restartBtn">Von vorne</button>
+      </div>
+    </div>`;
+  document.getElementById('restartBtn').onclick = ()=>{ pos=0; buildOrder(); render(); };
+  updateProgress();
+}
+
+function updateProgress(){
+  const total = DATA.length;
+  const learned = Object.keys(state.known).length;
+  const pct = Math.round(learned/total*100);
+  document.getElementById('progFill').style.width = pct+"%";
+  document.getElementById('progText').textContent = `${learned} von ${total} gelernt`;
+  document.getElementById('cardPos').textContent = pos<order.length ? `Karte ${pos+1}/${order.length}` : "";
+}
+
+function esc(s){ return s.replace(/"/g,'&quot;'); }
+
+const CAT_COLORS = {
+  "Vorstellen":   {bg:"#f7dad6", fg:"#b94f59"}, // rot
+  "Kleidung":     {bg:"#f6ecc5", fg:"#a8852e"}, // gelb
+  "Musik":        {bg:"#dcecd2", fg:"#4f7a3f"}, // grün
+  "Handy":        {bg:"#f5dec5", fg:"#b5712e"}, // orange
+  "Hobbys":       {bg:"#d3e6ef", fg:"#3f6a83"}, // blau
+  "Freunde":      {bg:"#f3dde0", fg:"#b35e6d"}, // rosa
+  "Nachbarschaft":{bg:"#e4d6ec", fg:"#7a5191"}  // lila
+};
+function catStyle(cat){
+  const c = CAT_COLORS[cat] || {bg:"#f0e6d8", fg:"#9a7b46"};
+  return `background:${c.bg};color:${c.fg}`;
+}
+
+/* ---------- Tabs ---------- */
+document.getElementById('tabs').addEventListener('click', e=>{
+  const t = e.target.closest('.tab');
+  if(!t) return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  mode = t.dataset.mode;
+  pos = 0;
+  buildOrder();
+  render();
+});
+
+/* ---------- Settings ---------- */
+const autoSpeakEl = document.getElementById('autoSpeak');
+const shuffleEl = document.getElementById('shuffle');
+const rateEl = document.getElementById('rate');
+const rateValEl = document.getElementById('rateVal');
+autoSpeakEl.checked = state.autoSpeak;
+shuffleEl.checked = state.shuffle;
+autoSpeakEl.onchange = ()=>{ state.autoSpeak = autoSpeakEl.checked; saveState(); };
+shuffleEl.onchange = ()=>{ state.shuffle = shuffleEl.checked; saveState(); pos=0; buildOrder(); render(); };
+
+function applyRateDisplay(){
+  rateEl.value = state.rate;
+  rateValEl.textContent = Number(state.rate).toFixed(2) + "×";
+}
+applyRateDisplay();
+rateEl.oninput = ()=>{
+  state.rate = parseFloat(rateEl.value);
+  rateValEl.textContent = state.rate.toFixed(2) + "×";
+  saveState();
+};
+document.getElementById('rateTest').onclick = ()=>{
+  speak("Bonjour, je m'appelle Marie. Et toi ?", "fr");
+};
+
+document.getElementById('resetBtn').onclick = ()=>{
+  if(confirm("Wirklich den ganzen Fortschritt löschen?")){
+    state = {known:{}, autoSpeak:autoSpeakEl.checked, shuffle:shuffleEl.checked, rate:state.rate};
+    saveState();
+    pos=0; buildOrder(); render();
+  }
+};
+
+/* ---------- Start ---------- */
+buildOrder();
+render();
+</script>
+</body>
+</html>
