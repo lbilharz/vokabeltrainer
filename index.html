@@ -325,16 +325,45 @@ function pickVoice(lang){
   const vs = speechSynthesis.getVoices();
   return vs.find(v=>v.lang.toLowerCase().startsWith(lang)) || null;
 }
+
+/* FNV-1a 32-bit over UTF-8 bytes — MUST match render_tts.py so we find the
+   pre-rendered ElevenLabs mp3 for a given phrase. */
+function fnv1a(str){
+  let h = 0x811c9dc5;
+  for(const b of new TextEncoder().encode(str)){ h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
+  return ('0000000' + h.toString(16)).slice(-8);
+}
+
+function rateFor(lang){
+  const base = (state.rate != null) ? state.rate : 0.8;
+  // Deutsch einen Tick schneller als Französisch
+  return lang === "fr" ? base : Math.min(base + 0.15, 1.3);
+}
+
+let currentAudio = null, currentAudioLang = null;
 function speak(text, lang){
+  if(currentAudio){ currentAudio.pause(); currentAudio = null; }
+  if('speechSynthesis' in window) speechSynthesis.cancel();
+  const rate = rateFor(lang);
+  // Pre-rendered natural voices (Victoria=fr, Lea=de). Fall back to system TTS
+  // for anything without a file — e.g. self-added cards.
+  const a = new Audio(`audio/${lang}/${fnv1a(text)}.mp3`);
+  a.preservesPitch = a.mozPreservesPitch = a.webkitPreservesPitch = true;
+  a.playbackRate = rate;
+  currentAudio = a; currentAudioLang = lang;
+  let fellBack = false;
+  const fallback = ()=>{ if(fellBack) return; fellBack = true; if(currentAudio===a){ currentAudio=null; } speakTTS(text, lang, rate); };
+  a.onerror = fallback;
+  a.play().catch(fallback);
+}
+function speakTTS(text, lang, rate){
   if(!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang === "fr" ? "fr-FR" : "de-DE";
   const v = pickVoice(lang);
   if(v) u.voice = v;
-  const base = (state.rate != null) ? state.rate : 0.8;
-  // Deutsch einen Tick schneller als Französisch
-  u.rate = lang === "fr" ? base : Math.min(base + 0.15, 1.3);
+  u.rate = rate;
   speechSynthesis.speak(u);
 }
 
@@ -737,10 +766,13 @@ applyRateDisplay();
 rateEl.oninput = ()=>{
   state.rate = parseFloat(rateEl.value);
   rateValEl.textContent = state.rate.toFixed(2) + "×";
+  // Live tempo on a currently playing clip (pitch preserved).
+  if(currentAudio && currentAudioLang) currentAudio.playbackRate = rateFor(currentAudioLang);
   saveState();
 };
 document.getElementById('rateTest').onclick = ()=>{
-  speak("Bonjour, je m'appelle Marie. Et toi ?", "fr");
+  const sample = (typeof DATA !== 'undefined' && DATA.length) ? DATA[0].fr : "Bonjour, je m'appelle Marie. Et toi ?";
+  speak(sample, "fr");
 };
 
 document.getElementById('resetBtn').onclick = ()=>{
