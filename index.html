@@ -534,10 +534,11 @@ function rate(known){
 function renderDone(){
   const total = DATA.length;
   const t = todayEpoch();
-  let learned = 0, nextDue = null;
+  let learned = 0, started = 0, nextDue = null;
   for(let i=0;i<total;i++){
     const s = getSrs(i);
     if(s.box >= MASTER) learned++;
+    else if(s.box >= 2) started++;
     if(s.box < 5 && (nextDue === null || s.due < nextDue)) nextDue = s.due;
   }
   let whenTxt;
@@ -557,7 +558,7 @@ function renderDone(){
     <div class="done-msg">
       <div class="big">🌟</div>
       <h2>${heading}</h2>
-      <p><strong>${learned} von ${total}</strong> Sätzen sitzen.<br>${whenTxt}</p>
+      <p><strong>${learned} von ${total}</strong> Sätzen sitzen${started?`, ${started} in Arbeit`:''}.<br>${whenTxt}</p>
       <div class="controls" style="justify-content:center">${btn}</div>
     </div>`;
   if(practiceAll){
@@ -670,11 +671,17 @@ function renderAdd(){
 
 function updateProgress(){
   const total = DATA.length;
-  let learned = 0;
-  for(let i=0;i<total;i++){ if(getSrs(i).box >= MASTER) learned++; }
-  const pct = total ? Math.round(learned/total*100) : 0;
+  let mastered = 0, started = 0, score = 0;
+  for(let i=0;i<total;i++){
+    const b = getSrs(i).box;
+    score += (b - 1) / 4;          // jede Box-Stufe zählt anteilig (Box 1 = 0 %, Box 5 = 100 %)
+    if(b >= MASTER) mastered++;
+    else if(b >= 2) started++;
+  }
+  const pct = total ? Math.round(score/total*100) : 0;
   document.getElementById('progFill').style.width = pct+"%";
-  document.getElementById('progText').textContent = `${learned} von ${total} sitzen`;
+  document.getElementById('progText').textContent =
+    `${mastered} von ${total} sitzen` + (started ? ` · ${started} in Arbeit` : "");
   if(pos < order.length){
     const rem = order.length - pos;
     document.getElementById('cardPos').textContent = practiceAll ? `Karte ${pos+1}/${order.length}` : `Noch ${rem} fällig`;
