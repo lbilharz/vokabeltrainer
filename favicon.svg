@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="13" fill="#f7f3ec"/>
+  <!-- DE-Sprechblase (Sky), hinten -->
+  <g fill="#5b8aa6">
+    <rect x="4" y="7" width="41" height="30" rx="9"/>
+    <path d="M12 34 L12 49 L26 36 Z"/>
+  </g>
+  <!-- Papier-Trennkante, damit die vordere Blase abhebt -->
+  <g fill="#f7f3ec">
+    <rect x="24" y="27" width="38" height="28" rx="10"/>
+    <path d="M54 50 L54 63 L39 52 Z"/>
+  </g>
+  <!-- FR-Sprechblase (Rose), vorne -->
+  <g fill="#d96c75">
+    <rect x="26.5" y="29.5" width="33" height="23" rx="8"/>
+    <path d="M52 50 L52 60 L39 51 Z"/>
+  </g>
+  <!-- Sprechpunkte -->
+  <g fill="#f7f3ec">
+    <circle cx="15" cy="21" r="2.9"/><circle cx="24" cy="21" r="2.9"/><circle cx="33" cy="21" r="2.9"/>
+  </g>
+  <g fill="#fffdf8">
+    <circle cx="36" cy="41" r="2.6"/><circle cx="43" cy="41" r="2.6"/><circle cx="50" cy="41" r="2.6"/>
+  </g>
+</svg>
