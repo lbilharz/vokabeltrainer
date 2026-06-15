@@ -340,11 +340,25 @@ function rateFor(lang){
   return lang === "fr" ? base : Math.min(base + 0.15, 1.3);
 }
 
+/* Set der vorgerenderten mp3s (nur eingebaute Sätze). So wissen wir SYNCHRON,
+   ob eine Datei existiert — wichtig, weil Safari die Sprachausgabe nur direkt
+   im Klick-Kontext erlaubt, nicht erst nach einem asynchronen Audio-Fehler. */
+let AUDIO_KEYS = null;
+function audioKeys(){
+  if(AUDIO_KEYS) return AUDIO_KEYS;
+  AUDIO_KEYS = new Set();
+  for(const d of BUILTIN){ AUDIO_KEYS.add('fr/'+fnv1a(d.fr)); AUDIO_KEYS.add('de/'+fnv1a(d.de)); }
+  return AUDIO_KEYS;
+}
+
 let currentAudio = null, currentAudioLang = null;
 function speak(text, lang){
   if(currentAudio){ currentAudio.pause(); currentAudio = null; }
   if('speechSynthesis' in window) speechSynthesis.cancel();
   const rate = rateFor(lang);
+  // Eigene Sätze haben keine vorgerenderte Datei -> direkt (synchron!) System-TTS,
+  // damit die Sprachausgabe im Klick-Kontext erlaubt bleibt (v. a. Safari).
+  if(!audioKeys().has(`${lang}/${fnv1a(text)}`)){ speakTTS(text, lang, rate); return; }
   // Pre-rendered natural voices (Victoria=fr, Lea=de). Fall back to system TTS
   // for anything without a file — e.g. self-added cards.
   const a = new Audio(`audio/${lang}/${fnv1a(text)}.mp3`);
