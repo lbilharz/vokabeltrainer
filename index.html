@@ -348,6 +348,9 @@ function rateFor(lang){
 /* Set der vorgerenderten mp3s (nur eingebaute Sätze). So wissen wir SYNCHRON,
    ob eine Datei existiert — wichtig, weil Safari die Sprachausgabe nur direkt
    im Klick-Kontext erlaubt, nicht erst nach einem asynchronen Audio-Fehler. */
+// Absoluter Pfad, damit Audio auch unter Routen wie /ecouter gefunden wird
+// (relativ bleibt es nur beim direkten Öffnen der Datei ohne Server).
+const AUDIO_BASE = location.protocol === 'file:' ? 'audio/' : '/audio/';
 let AUDIO_KEYS = null;
 function audioKeys(){
   if(AUDIO_KEYS) return AUDIO_KEYS;
@@ -366,7 +369,7 @@ function speak(text, lang){
   if(!audioKeys().has(`${lang}/${fnv1a(text)}`)){ speakTTS(text, lang, rate); return; }
   // Pre-rendered natural voices (Victoria=fr, Lea=de). Fall back to system TTS
   // for anything without a file — e.g. self-added cards.
-  const a = new Audio(`audio/${lang}/${fnv1a(text)}.mp3`);
+  const a = new Audio(`${AUDIO_BASE}${lang}/${fnv1a(text)}.mp3`);
   a.preservesPitch = a.mozPreservesPitch = a.webkitPreservesPitch = true;
   a.playbackRate = rate;
   currentAudio = a; currentAudioLang = lang;
@@ -754,18 +757,41 @@ function catStyle(cat){
   return `background:${c.bg};color:${c.fg}`;
 }
 
-/* ---------- Tabs ---------- */
-document.getElementById('tabs').addEventListener('click', e=>{
-  const t = e.target.closest('.tab');
-  if(!t) return;
-  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');
-  mode = t.dataset.mode;
+/* ---------- Tabs & Routen ---------- */
+// Jede View ist über eine eigene Route erreichbar, z. B. /ecouter für „Hören".
+const ROUTES = {
+  flip:    "cartes",
+  type:    "ecrire",
+  reverse: "traduire",
+  listen:  "ecouter",
+  list:    "liste",
+  add:     "ajouter"
+};
+function modeFromPath(){
+  const seg = decodeURIComponent(location.pathname).replace(/\/+$/,'').split('/').pop().toLowerCase();
+  for(const [m, r] of Object.entries(ROUTES)) if(seg === r) return m;
+  return "flip";
+}
+function syncTabs(){
+  document.querySelectorAll('.tab').forEach(x=> x.classList.toggle('active', x.dataset.mode === mode));
+}
+function setMode(m, push){
+  mode = m;
+  if(push){
+    try{ history.pushState({mode:m}, '', '/' + ROUTES[m]); }catch(e){} // file:// erlaubt kein pushState
+  }
+  syncTabs();
   pos = 0;
   practiceAll = false;
   buildOrder();
   render();
+}
+document.getElementById('tabs').addEventListener('click', e=>{
+  const t = e.target.closest('.tab');
+  if(!t) return;
+  setMode(t.dataset.mode, true);
 });
+window.addEventListener('popstate', ()=> setMode(modeFromPath(), false));
 
 /* ---------- Settings ---------- */
 const autoSpeakEl = document.getElementById('autoSpeak');
@@ -803,6 +829,8 @@ document.getElementById('resetBtn').onclick = ()=>{
 };
 
 /* ---------- Start ---------- */
+mode = modeFromPath();
+syncTabs();
 buildOrder();
 render();
 </script>

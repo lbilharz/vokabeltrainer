@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "vokabeltrainer",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8777"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-l", "8777", "--single", "."],
       "port": 8777
     }
   ]
