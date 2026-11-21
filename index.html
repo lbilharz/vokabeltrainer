@@ -456,6 +456,7 @@ function sayText(s, lang){
          .replace(/\bjdm\b/g, "jemandem").replace(/\bjdn\b/g, "jemanden").replace(/\betw\./g, "etwas")
          .replace(/([A-Za-zÄÖÜäöüß]+)\/in\b/g, "$1, $1in");
   }
+  s = s.replace(/[()]/g, "");          // (sich) ändern -> sich ändern
   return s.replace(/\s*\/\s*/g, ", ").replace(/\s+/g, " ").replace(/\s+([,?!])/g, "$1")
           .replace(/(,\s*)+/g, ", ").replace(/^[,\s]+|[,\s]+$/g, "");
 }

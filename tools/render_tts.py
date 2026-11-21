@@ -13,8 +13,8 @@ Nutzung:
   python3 tools/render_tts.py --dry-run     # nur zeigen, was fehlt
   python3 tools/render_tts.py
 
-Stimmen: VOICE_FR / VOICE_DE (Voice-IDs) in .env oder Umgebung. Ohne diese
-sucht das Skript in deinen Stimmen nach "Victoria" (fr) und "Lea" (de).
+Stimmen: siehe VOICE_IDS. VOICE_FR / VOICE_DE in .env überschreiben sie.
+Alternative ohne Key: der ElevenLabs-Connector in Claude (siehe Commit 6e70cfa ff.).
 """
 import json
 import os
@@ -28,7 +28,9 @@ AUDIO = ROOT / "audio"
 API = "https://api.elevenlabs.io/v1"
 MODEL = "eleven_multilingual_v2"
 FORMAT = "mp3_44100_128"  # wie die vorhandenen Dateien
-VOICE_NAMES = {"fr": "Victoria", "de": "Lea"}
+# Stimmen aus der ElevenLabs-Bibliothek, mit denen die Vokabeln von Unité 2 gerendert sind:
+# fr "Victoria - Content Creator", de "Lea Brandt - Explainer". VOICE_FR / VOICE_DE überschreiben sie.
+VOICE_IDS = {"fr": "O31r762Gb3WFygrEOGh0", "de": "pMrwpTuGOma7Nubxs5jo"}
 
 
 def load_env():
@@ -60,6 +62,7 @@ def say_text(s, lang):
         s = re.sub(r"\bjdn\b", "jemanden", s)
         s = re.sub(r"\betw\.", "etwas", s)
         s = re.sub(r"([A-Za-zÄÖÜäöüß]+)/in\b", r"\1, \1in", s)
+    s = re.sub(r"[()]", "", s)  # (sich) ändern -> sich ändern
     s = re.sub(r"\s*/\s*", ", ", s)
     s = re.sub(r"\s+", " ", s)
     s = re.sub(r"\s+([,?!])", r"\1", s)
@@ -88,14 +91,7 @@ def request(path, key, body=None):
 
 
 def voice_id(lang, key):
-    env = os.environ.get("VOICE_" + lang.upper())
-    if env:
-        return env
-    voices = json.loads(request("/voices", key))["voices"]
-    for v in voices:
-        if v["name"].lower().startswith(VOICE_NAMES[lang].lower()):
-            return v["voice_id"]
-    sys.exit(f"Stimme '{VOICE_NAMES[lang]}' nicht gefunden. Bitte VOICE_{lang.upper()} setzen.")
+    return os.environ.get("VOICE_" + lang.upper()) or VOICE_IDS[lang]
 
 
 def write_index():
