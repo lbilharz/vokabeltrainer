@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Rendert fehlende Sprachdateien mit ElevenLabs.
+
+Liest alle Einträge (fr:"..." / de:"...") aus index.html. Für jeden Text ohne
+mp3 erzeugt das Skript audio/<lang>/<hash>.mp3 und schreibt audio/index.json neu.
+
+Der Dateiname ist der FNV-1a-Hash des angezeigten Textes. Gesprochen wird
+say_text(), also ohne Platzhalter wie qn/qc. Beides MUSS zu fnv1a() und
+sayText() in index.html passen.
+
+Nutzung:
+  echo 'ELEVENLABS_API_KEY=...' > .env      # einmalig, .env ist in .gitignore
+  python3 tools/render_tts.py --dry-run     # nur zeigen, was fehlt
+  python3 tools/render_tts.py
+
+Stimmen: VOICE_FR / VOICE_DE (Voice-IDs) in .env oder Umgebung. Ohne diese
+sucht das Skript in deinen Stimmen nach "Victoria" (fr) und "Lea" (de).
+"""
+import json
+import os
+import re
+import sys
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+AUDIO = ROOT / "audio"
+API = "https://api.elevenlabs.io/v1"
+MODEL = "eleven_multilingual_v2"
+FORMAT = "mp3_44100_128"  # wie die vorhandenen Dateien
+VOICE_NAMES = {"fr": "Victoria", "de": "Lea"}
+
+
+def load_env():
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+def fnv1a(text):
+    h = 0x811C9DC5
+    for b in text.encode("utf-8"):
+        h ^= b
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return f"{h:08x}"
+
+
+def say_text(s, lang):
+    if lang == "fr":
+        s = s.replace("(à qn)", "")
+        s = re.sub(r"\+\s*inf\.", "", s)
+        s = re.sub(r"\bqn/qc\b|\bqc\b|\bqn\b", "", s)
+    else:
+        s = re.sub(r"\bjdn/etw\.", "jemanden oder etwas", s)
+        s = re.sub(r"\bjdm/etw\.", "jemandem oder etwas", s)
+        s = re.sub(r"\bjdm\b", "jemandem", s)
+        s = re.sub(r"\bjdn\b", "jemanden", s)
+        s = re.sub(r"\betw\.", "etwas", s)
+        s = re.sub(r"([A-Za-zÄÖÜäöüß]+)/in\b", r"\1, \1in", s)
+    s = re.sub(r"\s*/\s*", ", ", s)
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s+([,?!])", r"\1", s)
+    s = re.sub(r"(,\s*)+", ", ", s)
+    return re.sub(r"^[,\s]+|[,\s]+$", "", s)
+
+
+def phrases():
+    html = (ROOT / "index.html").read_text()
+    found = {"fr": set(), "de": set()}
+    for lang in found:
+        for m in re.finditer(lang + r':"((?:[^"\\]|\\.)*)"', html):
+            found[lang].add(m.group(1).replace('\\"', '"'))
+    return found
+
+
+def request(path, key, body=None):
+    req = urllib.request.Request(
+        API + path,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"xi-api-key": key, "Content-Type": "application/json"},
+        method="POST" if body is not None else "GET",
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read()
+
+
+def voice_id(lang, key):
+    env = os.environ.get("VOICE_" + lang.upper())
+    if env:
+        return env
+    voices = json.loads(request("/voices", key))["voices"]
+    for v in voices:
+        if v["name"].lower().startswith(VOICE_NAMES[lang].lower()):
+            return v["voice_id"]
+    sys.exit(f"Stimme '{VOICE_NAMES[lang]}' nicht gefunden. Bitte VOICE_{lang.upper()} setzen.")
+
+
+def write_index():
+    keys = sorted(f"{lang}/{p.stem}" for lang in ("fr", "de") for p in (AUDIO / lang).glob("*.mp3"))
+    (AUDIO / "index.json").write_text(json.dumps(keys, indent=0) + "\n")
+    return len(keys)
+
+
+def main():
+    load_env()
+    dry = "--dry-run" in sys.argv
+    todo = [(lang, t) for lang, ts in phrases().items() for t in sorted(ts)
+            if not (AUDIO / lang / f"{fnv1a(t)}.mp3").exists()]
+    print(f"{len(todo)} Dateien fehlen.")
+    for lang, t in todo:
+        print(f"  {lang}/{fnv1a(t)}  {say_text(t, lang)}")
+    if dry or not todo:
+        print(f"audio/index.json: {write_index()} Einträge")
+        return
+    key = os.environ.get("ELEVENLABS_API_KEY")
+    if not key:
+        sys.exit("ELEVENLABS_API_KEY fehlt (in .env oder Umgebung).")
+    voices = {lang: voice_id(lang, key) for lang in ("fr", "de")}
+    for lang, t in todo:
+        out = AUDIO / lang / f"{fnv1a(t)}.mp3"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        audio = request(f"/text-to-speech/{voices[lang]}?output_format={FORMAT}", key,
+                        {"text": say_text(t, lang), "model_id": MODEL})
+        out.write_bytes(audio)
+        print(f"  ok {out.relative_to(ROOT)}")
+    print(f"audio/index.json: {write_index()} Einträge")
+
+
+if __name__ == "__main__":
+    main()

@@ -168,6 +168,16 @@
   .form-field input:focus,.form-field select:focus{outline:none;border-color:var(--sky)}
   .form-msg{margin-top:4px;font-weight:600;font-size:.92rem;min-height:1.3em}
   .custom-count{font-size:.85rem;color:#8a8075;margin-top:18px;text-align:center}
+
+  /* set switcher */
+  .sets{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+  .set-btn{padding:7px 14px;border:1.5px solid var(--line);border-radius:99px;background:var(--card);font-size:.85rem;font-weight:700;color:#7a7066;cursor:pointer;transition:.15s;font-family:inherit}
+  .set-btn:hover{border-color:var(--rose)}
+  .set-btn.active{background:var(--rose-deep);color:#fff;border-color:var(--rose-deep)}
+
+  /* grammar notes */
+  .note{font-size:.9rem;font-weight:500;font-style:italic;color:#8a8075;margin-top:6px;line-height:1.4}
+  .li-note{font-size:.8rem;font-style:italic;color:#9a9089;margin-top:3px}
 </style>
 </head>
 <body>
@@ -175,7 +185,8 @@
   <header>
     <div class="eyebrow">Vokabeltrainer</div>
     <h1>Deutsch <span class="fr">→ Français</span></h1>
-    <p class="sub">Sätze rund um Familie, Hobbys, Handy &amp; Freunde</p>
+    <p class="sub" id="setSub"></p>
+    <div class="sets" id="sets"></div>
   </header>
 
   <div class="prog-shell">
@@ -216,8 +227,56 @@
 </div>
 
 <script>
+/* ---------- Vokabeln Unité 2 (Volet 2 + 3) ---------- */
+// n = optionaler Hinweis, wird nach dem Aufdecken und in der Liste gezeigt.
+const VOCAB_U2 = [
+  {c:"Volet 2", fr:"italien/italienne", de:"italienisch"},
+  {c:"Volet 2", fr:"découvrir qn/qc", de:"jdn/etw. entdecken", n:"wird wie ouvrir konjugiert"},
+  {c:"Volet 2", fr:"proposer (à qn) de + inf.", de:"jdm vorschlagen, etw. zu tun"},
+  {c:"Volet 2", fr:"le rêve", de:"der Traum", n:"→ rêver"},
+  {c:"Volet 2", fr:"triste", de:"traurig"},
+  {c:"Volet 2", fr:"heureusement", de:"glücklicherweise", n:"→ heureux/heureuse"},
+  {c:"Volet 2", fr:"l'Afrique", de:"Afrika"},
+  {c:"Volet 2", fr:"Dijon", de:"Stadt in der Region Burgund"},
+  {c:"Volet 2", fr:"l'année", de:"das Jahr", n:"in seinem Verlauf · → l'an"},
+  {c:"Volet 2", fr:"reconnaître qn/qc", de:"jdn/etw. wiedererkennen", n:"wird wie connaître konjugiert"},
+  {c:"Volet 2", fr:"le gardien / la gardienne", de:"der Wachmann / die Wachfrau", n:"→ garder qn/qc"},
+  {c:"Volet 2", fr:"amoureux/amoureuse", de:"verliebt", n:"→ l'amour"},
+  {c:"Volet 2", fr:"comme", de:"da", n:"kausal"},
+  {c:"Volet 2", fr:"en une fois", de:"auf ein Mal, in einem Zug", n:"→ la fois"},
+  {c:"Volet 2", fr:"se connaître", de:"sich kennen(lernen), einander kennen(lernen)", n:"passé composé mit être · Mes parents se sont connus à l'école."},
+  {c:"Volet 2", fr:"changer", de:"(sich) ändern", n:"wird wie manger konjugiert"},
+  {c:"Volet 2", fr:"le thème", de:"das Thema"},
+  {c:"Volet 2", fr:"c'est pourquoi", de:"deshalb, deswegen"},
+  {c:"Volet 2", fr:"l'auteur / l'auteure", de:"der/die Autor/in"},
+  {c:"Volet 2", fr:"la relation", de:"die Beziehung"},
+  {c:"Volet 2", fr:"s'identifier à qn/qc", de:"sich identifizieren mit jdm/etw.", n:"passé composé mit être"},
+  {c:"Volet 2", fr:"il/elle arrive à + inf.", de:"es gelingt ihm/ihr, etw. zu tun"},
+  {c:"Volet 2", fr:"arriver à qc / + inf.", de:"etw. erreichen", n:"passé composé mit être · = réussir qc"},
+  {c:"Volet 2", fr:"la mort", de:"der Tod", n:"≠ la vie"},
+  {c:"Volet 2", fr:"s'installer", de:"sich niederlassen", n:"passé composé mit être · → installer qc"},
+  {c:"Volet 2", fr:"Montréal", de:"Großstadt in Quebec"},
+  {c:"Volet 2", fr:"le pouvoir", de:"die Macht, die Fähigkeit"},
+  {c:"Volet 2", fr:"surnaturel/surnaturelle", de:"übernatürlich", n:"→ naturel/naturelle"},
+  {c:"Volet 2", fr:"la fée", de:"die Fee"},
+  {c:"Volet 2", fr:"le suspense", de:"die Spannung"},
+  {c:"Volet 2", fr:"Kinshasa", de:"Hauptstadt der Demokratischen Republik Kongo"},
+  {c:"Volet 2", fr:"le/la journaliste", de:"der/die Journalist/in", n:"→ le journal"},
+  {c:"Volet 3", fr:"chaque", de:"jeder, jede, jedes"},
+  {c:"Volet 3", fr:"le roman", de:"der Roman"},
+  {c:"Volet 3", fr:"le roman policier", de:"der Kriminalroman"},
+  {c:"Volet 3", fr:"l'amour", de:"die Liebe", n:"→ aimer qn/qc"},
+  {c:"Volet 3", fr:"le roman de fantasy", de:"der Fantasyroman"},
+  {c:"Volet 3", fr:"la fantasy", de:"Fantasy"},
+  {c:"Volet 3", fr:"le résumé", de:"die Zusammenfassung, die Inhaltsangabe"},
+  {c:"Volet 3", fr:"décrire qn/qc", de:"jdn/etw. beschreiben", n:"wird wie écrire konjugiert"},
+  {c:"Volet 3", fr:"le personnage", de:"die Figur"},
+  {c:"Volet 3", fr:"principal/principale/principaux", de:"Haupt-"},
+  {c:"Volet 3", fr:"le narrateur / la narratrice", de:"der/die Erzähler/in"}
+];
+
 /* ---------- Satzpaare DE → FR ---------- */
-const BUILTIN = [
+const SENTENCES = [
   // ROT — Vorstellen
   {c:"Vorstellen", fr:"Bonjour, je m'appelle … Et toi ?", de:"Hallo, ich heiße … Und du?"},
   {c:"Vorstellen", fr:"Tu as quel âge ?", de:"Wie alt bist du?"},
@@ -275,6 +334,14 @@ const BUILTIN = [
   {c:"Nachbarschaft", fr:"Qu'est-ce que tu aimes faire avec ta famille dans ton quartier ? / Qu'est-ce que tu aimes faire avec tes amis dans ton quartier ?", de:"Was machst du gern mit deiner Familie in deinem Viertel? / Was machst du gern mit deinen Freunden in deinem Viertel?"}
 ];
 
+/* ---------- Sets (umschaltbar, jedes mit eigenem Fortschritt) ---------- */
+const SETS = {
+  u2:     {label:"Vokabeln Unité 2", sub:"Unité 2 · Vokabeln aus Volet 2 und 3", items:VOCAB_U2},
+  saetze: {label:"Sätze", sub:"Sätze rund um Familie, Hobbys, Handy &amp; Freunde", items:SENTENCES}
+};
+const SET_ORDER = ["u2", "saetze"];
+const DEFAULT_SET = "u2";
+
 /* ---------- State ---------- */
 const STORE_KEY = "vokabeltrainer_fr_v1";
 
@@ -283,37 +350,57 @@ const DAY = 86400000;
 const MASTER = 4;                            // ab Box 4 gilt eine Karte als „sitzt"
 const INTERVAL = {1:0, 2:1, 3:2, 4:4, 5:7};  // Tage bis zur nächsten Abfrage je Box
 function todayEpoch(){ const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset()*60000)/DAY); }
-function getSrs(i){ return state.srs[i] || {box:1, due: todayEpoch()}; } // neue Karte: heute fällig
+function getSrs(i){ return P.srs[i] || {box:1, due: todayEpoch()}; } // neue Karte: heute fällig
 
 let DATA = [];
+let BUILTIN = [];                            // eingebaute Einträge des aktiven Sets
+let P = null;                                // Fortschritt des aktiven Sets: {known, srs, custom}
 let state = loadState();
 let mode = "flip";
 let listFilter = "all";
 let practiceAll = false;                     // true = alle Karten üben, nicht nur fällige
-rebuildData();
+activateSet(state.activeSet);
 let order = [...DATA.keys()];
 let pos = 0;
 let revealed = false;
 
 // eingebaute + eigene Sätze zusammenführen (eigene hinten → Indizes stabil)
-function rebuildData(){ DATA = BUILTIN.concat(state.custom || []); }
+function rebuildData(){ DATA = BUILTIN.concat(P.custom || []); }
+
+function activateSet(id){
+  if(!SETS[id]) id = DEFAULT_SET;
+  state.activeSet = id;
+  if(!state.sets[id]) state.sets[id] = {known:{}, srs:{}, custom:[]};
+  P = state.sets[id];
+  BUILTIN = SETS[id].items;
+  rebuildData();
+  document.getElementById('setSub').innerHTML = SETS[id].sub;
+  document.getElementById('sets').innerHTML = SET_ORDER.map(k=>
+    `<button class="set-btn ${k===id?'active':''}" data-set="${k}">${SETS[k].label}</button>`).join('');
+}
 
 function loadState(){
   try{
     const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    if(s && s.known){
+    if(s && (s.known || s.sets)){
       if(s.rate == null) s.rate = 0.8;
-      if(!Array.isArray(s.custom)) s.custom = [];
-      // Migration: bisherigen Fortschritt (state.known) ins Box-System übernehmen
-      if(!s.srs || typeof s.srs !== "object"){
-        s.srs = {};
-        const t = Math.floor((Date.now() - new Date().getTimezoneOffset()*60000)/DAY);
-        Object.keys(s.known||{}).forEach(k=>{ s.srs[k] = {box:MASTER, due:t+2}; });
+      if(!s.sets){
+        // Alter Stand (vor den Sets): Fortschritt gehört zum Satz-Set
+        if(!Array.isArray(s.custom)) s.custom = [];
+        // Migration: bisherigen Fortschritt (state.known) ins Box-System übernehmen
+        if(!s.srs || typeof s.srs !== "object"){
+          s.srs = {};
+          const t = Math.floor((Date.now() - new Date().getTimezoneOffset()*60000)/DAY);
+          Object.keys(s.known||{}).forEach(k=>{ s.srs[k] = {box:MASTER, due:t+2}; });
+        }
+        s.sets = {saetze: {known:s.known||{}, srs:s.srs, custom:s.custom}};
       }
+      delete s.known; delete s.srs; delete s.custom;
+      if(!s.activeSet) s.activeSet = DEFAULT_SET;
       return s;
     }
   }catch(e){}
-  return {known:{}, srs:{}, autoSpeak:false, shuffle:false, rate:0.8, custom:[]};
+  return {sets:{}, activeSet:DEFAULT_SET, autoSpeak:false, shuffle:false, rate:0.8};
 }
 function saveState(){
   try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
@@ -345,18 +432,32 @@ function rateFor(lang){
   return lang === "fr" ? base : Math.min(base + 0.15, 1.3);
 }
 
-/* Set der vorgerenderten mp3s (nur eingebaute Sätze). So wissen wir SYNCHRON,
-   ob eine Datei existiert — wichtig, weil Safari die Sprachausgabe nur direkt
-   im Klick-Kontext erlaubt, nicht erst nach einem asynchronen Audio-Fehler. */
+/* Liste der vorgerenderten mp3s aus audio/index.json (schreibt tools/render_tts.py).
+   So wissen wir SYNCHRON, ob eine Datei existiert. Das ist wichtig, weil Safari
+   die Sprachausgabe nur direkt im Klick-Kontext erlaubt, nicht erst nach einem
+   asynchronen Audio-Fehler. Solange die Liste lädt, spricht die System-Stimme. */
 // Absoluter Pfad, damit Audio auch unter Routen wie /ecouter gefunden wird
 // (relativ bleibt es nur beim direkten Öffnen der Datei ohne Server).
 const AUDIO_BASE = location.protocol === 'file:' ? 'audio/' : '/audio/';
-let AUDIO_KEYS = null;
-function audioKeys(){
-  if(AUDIO_KEYS) return AUDIO_KEYS;
-  AUDIO_KEYS = new Set();
-  for(const d of BUILTIN){ AUDIO_KEYS.add('fr/'+fnv1a(d.fr)); AUDIO_KEYS.add('de/'+fnv1a(d.de)); }
-  return AUDIO_KEYS;
+let AUDIO_KEYS = new Set();
+fetch(AUDIO_BASE + 'index.json')
+  .then(r => r.ok ? r.json() : [])
+  .then(list => { if(Array.isArray(list)) AUDIO_KEYS = new Set(list); })
+  .catch(()=>{});
+function audioKeys(){ return AUDIO_KEYS; }
+
+/* Text für die System-Stimme: Platzhalter wie qn/qc nicht mitsprechen.
+   MUSS zu say_text() in tools/render_tts.py passen. */
+function sayText(s, lang){
+  if(lang === "fr"){
+    s = s.replace(/\(à qn\)/g, "").replace(/\+\s*inf\./g, "").replace(/\bqn\/qc\b|\bqc\b|\bqn\b/g, "");
+  } else {
+    s = s.replace(/\bjdn\/etw\./g, "jemanden oder etwas").replace(/\bjdm\/etw\./g, "jemandem oder etwas")
+         .replace(/\bjdm\b/g, "jemandem").replace(/\bjdn\b/g, "jemanden").replace(/\betw\./g, "etwas")
+         .replace(/([A-Za-zÄÖÜäöüß]+)\/in\b/g, "$1, $1in");
+  }
+  return s.replace(/\s*\/\s*/g, ", ").replace(/\s+/g, " ").replace(/\s+([,?!])/g, "$1")
+          .replace(/(,\s*)+/g, ", ").replace(/^[,\s]+|[,\s]+$/g, "");
 }
 
 let currentAudio = null, currentAudioLang = null;
@@ -381,7 +482,7 @@ function speak(text, lang){
 function speakTTS(text, lang, rate){
   if(!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
+  const u = new SpeechSynthesisUtterance(sayText(text, lang));
   u.lang = lang === "fr" ? "fr-FR" : "de-DE";
   const v = pickVoice(lang);
   if(v) u.voice = v;
@@ -438,6 +539,7 @@ function render(){
       <div class="answer hidden" id="answer">
         <div style="margin-bottom:8px">${item.de}</div>
         <div style="color:var(--rose-deep)">${item.fr}</div>
+        ${item.n ? `<div class="note">${item.n}</div>` : ''}
       </div>`;
   } else {
     html += `
@@ -456,6 +558,7 @@ function render(){
     html += `
       <div class="answer hidden" id="answer">${backText}
         <button class="speak" data-say="${esc(backText)}" data-lang="${backLang}" title="Vorlesen">🔊</button>
+        ${item.n ? `<div class="note">${item.n}</div>` : ''}
       </div>`;
   }
 
@@ -536,9 +639,38 @@ function reveal(){
 
 function norm(s){
   return s.toLowerCase()
-    .replace(/[.,!?;:«»"']/g,'')
+    .replace(/[.,!?;:«»"'’‘]/g,'')   // ’ = Apostroph der iPhone-Tastatur
     .replace(/\s+/g,' ')
     .trim();
+}
+// Platzhalter weglassen: qn/qc, + inf., jdn/etw., (à qn), (sich) …
+function stripPlaceholders(s){
+  return s.replace(/\([^)]*\)/g, ' ')
+          .replace(/\+\s*inf\.?/g, ' ')
+          .replace(/\bqn\/qc\b|\bqn\b|\bqc\b/g, ' ')
+          .replace(/\b(jdn|jdm|jds|etw)\.?(\/(jdn|jdm|jds|etw)\.?)*/g, ' ')
+          .replace(/\s+/g, ' ').trim();
+}
+// Alle akzeptierten Antworten: mit und ohne Platzhalter, und jede /-Variante
+// einzeln (z. B. „italien/italienne", „le gardien / la gardienne").
+function acceptedAnswers(target){
+  const out = new Set();
+  const add = s => { const n = norm(s); if(n) out.add(n); };
+  for(const base of [target, stripPlaceholders(target)]){
+    add(base);
+    for(const phrase of base.split(/\s+\/\s+/)){
+      add(phrase);
+      let combos = [''];
+      for(const tok of phrase.trim().split(/\s+/)){
+        const opts = tok.includes('/') ? tok.split('/').filter(Boolean) : [tok];
+        const next = [];
+        for(const c of combos) for(const o of opts) next.push(c ? c + ' ' + o : o);
+        combos = next.slice(0, 64);
+      }
+      combos.forEach(add);
+    }
+  }
+  return out;
 }
 function checkAnswer(isReverse){
   const input = document.getElementById('typeInput');
@@ -547,9 +679,7 @@ function checkAnswer(isReverse){
   const target = isReverse ? item.de : item.fr;
   const ans = norm(input.value);
   if(!ans){ input.focus(); return; }
-  // accept if matches one of the slash-variants
-  const variants = target.split('/').map(v=>norm(v));
-  const ok = variants.some(v=> v===ans || norm(target)===ans);
+  const ok = acceptedAnswers(target).has(ans);
   if(ok){
     fb.textContent = "Richtig! 🎉";
     fb.className = "feedback ok";
@@ -575,8 +705,8 @@ function rate(known){
     s.due = t;
     order.push(id);            // im aktuellen Durchgang nochmal vorlegen
   }
-  state.srs[id] = s;
-  if(s.box >= MASTER) state.known[id] = true; else delete state.known[id];
+  P.srs[id] = s;
+  if(s.box >= MASTER) P.known[id] = true; else delete P.known[id];
   saveState();
   pos++;
   render();
@@ -640,6 +770,7 @@ function renderList(){
         <span class="li-cat" style="${catStyle(d.c)}">${d.c}</span>
         <div class="li-de">${d.de}</div>
         <div class="li-fr">${d.fr}</div>
+        ${d.n ? `<div class="li-note">${d.n}</div>` : ''}
         <div class="li-box">${dots}${tag}</div>
       </div>
       <button class="speak li-speak" data-say="${esc(d.fr)}" data-lang="fr" title="Vorlesen">🔊</button>
@@ -662,7 +793,7 @@ function renderList(){
 function renderAdd(){
   const cats = [...new Set(BUILTIN.map(d=>d.c))];
   const opts = cats.map(c=>`<option value="${esc(c)}">${c}</option>`).join('');
-  const n = (state.custom||[]).length;
+  const n = (P.custom||[]).length;
   card.innerHTML = `
     <span class="cat-tag" style="${catStyle('')}">Eigener Satz</span>
     <div class="form-field">
@@ -704,7 +835,7 @@ function renderAdd(){
       return;
     }
     if(!cat) cat = 'Eigene';
-    state.custom.push({c:cat, fr, de});
+    P.custom.push({c:cat, fr, de});
     saveState();
     rebuildData();
     buildOrder();
@@ -750,7 +881,9 @@ const CAT_COLORS = {
   "Handy":        {bg:"#f5dec5", fg:"#b5712e"}, // orange
   "Hobbys":       {bg:"#d3e6ef", fg:"#3f6a83"}, // blau
   "Freunde":      {bg:"#f3dde0", fg:"#b35e6d"}, // rosa
-  "Nachbarschaft":{bg:"#e4d6ec", fg:"#7a5191"}  // lila
+  "Nachbarschaft":{bg:"#e4d6ec", fg:"#7a5191"}, // lila
+  "Volet 2":      {bg:"#d3e6ef", fg:"#3f6a83"}, // blau
+  "Volet 3":      {bg:"#dcecd2", fg:"#4f7a3f"}  // grün
 };
 function catStyle(cat){
   const c = CAT_COLORS[cat] || {bg:"#f0e6d8", fg:"#9a7b46"};
@@ -821,12 +954,25 @@ document.getElementById('rateTest').onclick = ()=>{
 };
 
 document.getElementById('resetBtn').onclick = ()=>{
-  if(confirm("Wirklich den ganzen Fortschritt löschen?")){
-    state = {known:{}, srs:{}, autoSpeak:autoSpeakEl.checked, shuffle:shuffleEl.checked, rate:state.rate, custom:state.custom};
+  if(confirm(`Fortschritt für „${SETS[state.activeSet].label}" wirklich löschen?`)){
+    P.known = {}; P.srs = {};   // nur das aktive Set; eigene Sätze bleiben
     saveState();
     pos=0; buildOrder(); render();
   }
 };
+
+/* ---------- Set wechseln ---------- */
+document.getElementById('sets').addEventListener('click', e=>{
+  const b = e.target.closest('.set-btn');
+  if(!b || b.dataset.set === state.activeSet) return;
+  activateSet(b.dataset.set);
+  saveState();
+  listFilter = "all";
+  pos = 0;
+  practiceAll = false;
+  buildOrder();
+  render();
+});
 
 /* ---------- Start ---------- */
 mode = modeFromPath();

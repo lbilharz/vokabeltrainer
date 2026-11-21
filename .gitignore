@@ -12,3 +12,6 @@
 node_modules/
 dist/
 .vercel/
+
+# Secrets (z. B. ELEVENLABS_API_KEY)
+.env
