@@ -8,8 +8,9 @@ Der Dateiname ist der FNV-1a-Hash des angezeigten Textes. Gesprochen wird
 say_text(), also ohne Platzhalter wie qn/qc. Beides MUSS zu fnv1a() und
 sayText() in index.html passen.
 
+Key: aus ~/.secrets/elevenlabs (nur der Key), sonst ELEVENLABS_API_KEY in .env.
+
 Nutzung:
-  echo 'ELEVENLABS_API_KEY=...' > .env      # einmalig, .env ist in .gitignore
   python3 tools/render_tts.py --dry-run     # nur zeigen, was fehlt
   python3 tools/render_tts.py
 
@@ -28,12 +29,17 @@ AUDIO = ROOT / "audio"
 API = "https://api.elevenlabs.io/v1"
 MODEL = "eleven_multilingual_v2"
 FORMAT = "mp3_44100_128"  # wie die vorhandenen Dateien
+# Sprechtempo 0.7 bis 1.2. Mit SPEED in .env oder Umgebung änderbar.
+DEFAULT_SPEED = 0.95
 # Stimmen aus der ElevenLabs-Bibliothek, mit denen die Vokabeln von Unité 2 gerendert sind:
 # fr "Victoria - Content Creator", de "Lea Brandt - Explainer". VOICE_FR / VOICE_DE überschreiben sie.
 VOICE_IDS = {"fr": "O31r762Gb3WFygrEOGh0", "de": "pMrwpTuGOma7Nubxs5jo"}
 
 
 def load_env():
+    secret = Path.home() / ".secrets" / "elevenlabs"  # Datei mit nur dem Key
+    if "ELEVENLABS_API_KEY" not in os.environ and secret.exists():
+        os.environ["ELEVENLABS_API_KEY"] = secret.read_text().strip()
     env_file = ROOT / ".env"
     if env_file.exists():
         for line in env_file.read_text().splitlines():
@@ -102,6 +108,7 @@ def write_index():
 
 def main():
     load_env()
+    speed = float(os.environ.get("SPEED", DEFAULT_SPEED))
     dry = "--dry-run" in sys.argv
     todo = [(lang, t) for lang, ts in phrases().items() for t in sorted(ts)
             if not (AUDIO / lang / f"{fnv1a(t)}.mp3").exists()]
@@ -118,8 +125,11 @@ def main():
     for lang, t in todo:
         out = AUDIO / lang / f"{fnv1a(t)}.mp3"
         out.parent.mkdir(parents=True, exist_ok=True)
+        text = say_text(t, lang)
+        if text[-1] not in ".?!":
+            text += "."  # mit Punkt endet die Betonung natürlich
         audio = request(f"/text-to-speech/{voices[lang]}?output_format={FORMAT}", key,
-                        {"text": say_text(t, lang), "model_id": MODEL})
+                        {"text": text, "model_id": MODEL, "voice_settings": {"speed": speed}})
         out.write_bytes(audio)
         print(f"  ok {out.relative_to(ROOT)}")
     print(f"audio/index.json: {write_index()} Einträge")
