@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Step, makeStep, targetsFor } from "@shared/session";
 import { getCard, introduce, rate } from "@shared/srs";
-import { isCorrect, norm } from "@shared/text";
+import { type Closeness, closeness, isCorrect, norm } from "@shared/text";
 import type { CardState, Item, Progress } from "@shared/types";
 import { Icon } from "../components/Icon";
 import { speak } from "../lib/audio";
@@ -20,6 +20,15 @@ interface Props {
   onClose: () => void;
 }
 
+/**
+ * Was bei einer fast richtigen Antwort in der Rückmeldung steht.
+ * Akzente und Tippfehler zählen als richtig. Die Karte geht weiter.
+ */
+const NEAR_NOTES: Record<"accents" | "typo", string> = {
+  accents: "Achte beim nächsten Mal auf die Akzente. So schreibt man es:",
+  typo: "Achte beim nächsten Mal auf die Schreibweise. So schreibt man es:",
+};
+
 const PROMPTS: Record<Step["kind"], string> = {
   intro: "Was heißt das auf Deutsch?",
   type: "Wie heißt das auf Französisch?",
@@ -33,7 +42,10 @@ export function Session(props: Props) {
   const [pos, setPos] = useState(0);
   const [typed, setTyped] = useState("");
   const [choice, setChoice] = useState<string | null>(null);
-  const [result, setResult] = useState<{ correct: boolean } | null>(null);
+  /** near: richtig bis auf Akzente oder einen Tippfehler. Zählt als richtig, mit Hinweis. */
+  const [result, setResult] = useState<{ correct: boolean; near?: "accents" | "typo" } | null>(null);
+  /** true, sobald der Hinweis auf den fehlenden Artikel gezeigt wurde. Danach zählt der Versuch. */
+  const [articleHint, setArticleHint] = useState(false);
   const stats = useRef({ items: new Set<string>(), again: new Set<string>(), introduced: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -54,6 +66,7 @@ export function Session(props: Props) {
   const check = (giveUp = false) => {
     if (result) return;
     let correct: boolean;
+    let near: "accents" | "typo" | undefined;
     if (hasChoices) {
       if (!giveUp && choice === null) return;
       correct = !giveUp && choice === item.de;
@@ -62,7 +75,22 @@ export function Session(props: Props) {
         inputRef.current?.focus();
         return;
       }
-      correct = !giveUp && isCorrect(typed, targetsFor(item, pool));
+      const targets = targetsFor(item, pool);
+      correct = !giveUp && isCorrect(typed, targets);
+      if (!giveUp && !correct) {
+        // Wer genau ein anderes Wort aus dem Set schreibt, hat sich nicht vertippt.
+        const otherWord = pool.some((other) => other.id !== item.id && isCorrect(typed, [other.fr]));
+        const close: Closeness = otherWord ? null : closeness(typed, targets);
+        if (close === "accents" || close === "typo") {
+          correct = true;
+          near = close;
+        } else if (close === "article" && !articleHint) {
+          // Der Artikel gehört zum Wort. Dafür gibt es einen zweiten Versuch.
+          setArticleHint(true);
+          inputRef.current?.focus();
+          return;
+        }
+      }
     }
 
     const card = getCard(props.progress, item.id, today);
@@ -81,7 +109,7 @@ export function Session(props: Props) {
     // Tastatur schliessen, sonst verdeckt sie die Rückmeldung.
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     if (step.kind === "type") say();
-    setResult({ correct });
+    setResult({ correct, near });
   };
 
   const advance = () => {
@@ -97,6 +125,7 @@ export function Session(props: Props) {
     setTyped("");
     setChoice(null);
     setResult(null);
+    setArticleHint(false);
   };
 
   const done = pos + (result ? 1 : 0);
@@ -175,7 +204,7 @@ export function Session(props: Props) {
             key={pos}
             id="answer"
             ref={inputRef}
-            className={result ? (result.correct ? "right" : "wrong") : ""}
+            className={result ? (result.near ? "near" : result.correct ? "right" : "wrong") : ""}
             type="text"
             lang="fr"
             value={typed}
@@ -187,7 +216,13 @@ export function Session(props: Props) {
             autoCapitalize="none"
             spellCheck={false}
             enterKeyHint="done"
+            aria-describedby={articleHint && !result ? "answer-hint" : undefined}
           />
+          {articleHint && !result && (
+            <p id="answer-hint" className="answer-hint" role="status">
+              Fast richtig. Es fehlt der Artikel.
+            </p>
+          )}
         </form>
       )}
 
@@ -203,13 +238,22 @@ export function Session(props: Props) {
       )}
 
       {result && (
-        <footer className={`sheet ${result.correct ? "good" : "bad"}`} aria-live="polite">
+        <footer className={`sheet ${result.near ? "near" : result.correct ? "good" : "bad"}`} aria-live="polite">
           <div className="sheet-title">
             <span className="sheet-mark">
               <Icon name={result.correct ? "check" : "x"} size={20} stroke={3.2} />
             </span>
-            <h2>{result.correct ? "Richtig" : step.kind === "intro" ? "Merk dir" : "Noch nicht"}</h2>
+            <h2>
+              {result.near
+                ? "Fast richtig"
+                : result.correct
+                  ? "Richtig"
+                  : step.kind === "intro"
+                    ? "Merk dir"
+                    : "Noch nicht"}
+            </h2>
           </div>
+          {result.near && <p className="sheet-note">{NEAR_NOTES[result.near]}</p>}
           <div className="solution">
             <div className="solution-text">
               <div className="solution-fr" lang="fr">

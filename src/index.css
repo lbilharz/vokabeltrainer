@@ -1047,3 +1047,41 @@ button.station-row:active .station-dot {
   font-weight: 700;
   color: var(--green-dark);
 }
+
+.answer-hint {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff4d6;
+  color: #7a5200;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.sheet.near {
+  background: #fff4d6;
+}
+
+.sheet.near .sheet-title h2,
+.sheet-note {
+  color: #7a5200;
+}
+
+.sheet.near .sheet-mark {
+  background: #b07a10;
+}
+
+.sheet.near .btn {
+  background: #8a5f0a;
+  border-bottom-color: #6a4800;
+}
+
+.sheet-note {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.answer input.near {
+  border-color: #b07a10;
+  background: #fff4d6;
+  color: #7a5200;
+}

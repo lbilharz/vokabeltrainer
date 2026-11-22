@@ -94,3 +94,79 @@ export function isCorrect(answer: string, targets: string[]): boolean {
   if (!a) return false;
   return targets.some((t) => acceptedAnswers(t).has(a));
 }
+
+/** Warum eine falsche Antwort fast richtig ist. null heisst: nicht nah genug. */
+export type Closeness = "accents" | "article" | "typo" | null;
+
+/** Akzente und Ligaturen weg: "découvrir" und "decouvrir" sind danach gleich. */
+function fold(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae");
+}
+
+/**
+ * Anzahl der Änderungen, um a in b zu verwandeln.
+ * Zwei vertauschte Nachbarbuchstaben zählen als eine Änderung.
+ * Bricht ab, sobald es mehr als max sind.
+ */
+function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let before: number[] = [];
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let value = Math.min(prev[j]! + 1, row[j - 1]! + 1, prev[j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        value = Math.min(value, before[j - 2]! + 1);
+      }
+      row.push(value);
+      if (value < best) best = value;
+    }
+    if (best > max) return max + 1;
+    before = prev;
+    prev = row;
+  }
+  return prev[b.length]!;
+}
+
+const ARTICLE = /^(le|la|les|un|une) /;
+
+/** Der Artikel am Anfang, sonst "". */
+function articleOf(s: string): string {
+  return ARTICLE.exec(s)?.[1] ?? "";
+}
+
+/**
+ * Prüft, ob eine falsche Antwort eine zweite Chance verdient.
+ *
+ * accents: nur Akzente fehlen oder sind falsch.
+ * article: das Wort stimmt, aber der Artikel fehlt.
+ * typo: ein Buchstabe ist falsch, bei langen Wörtern höchstens zwei.
+ *   Ein falscher Artikel ("la" statt "le") zählt nicht als Tippfehler.
+ * Kurze Wörter bekommen keine Nachsicht. "la" und "le" sind zu nah beieinander.
+ */
+export function closeness(answer: string, targets: string[]): Closeness {
+  const given = fold(norm(answer));
+  if (!given) return null;
+  const accepted = new Set<string>();
+  for (const target of targets) for (const a of acceptedAnswers(target)) accepted.add(fold(a));
+  if (accepted.has(given)) return "accents";
+
+  let typo = false;
+  for (const right of accepted) {
+    if (right.replace(ARTICLE, "") === given && right !== given) return "article";
+    // norm() entfernt den Apostroph. Aus "l'amour" wird "lamour".
+    if (right === "l" + given) return "article";
+    // "la roman" statt "le roman" ist kein Tippfehler, sondern das falsche Geschlecht.
+    if (articleOf(right) !== articleOf(given)) continue;
+    const max = right.length >= 9 ? 2 : right.length >= 4 ? 1 : 0;
+    if (max > 0 && editDistance(given, right, max) <= max) typo = true;
+  }
+  return typo ? "typo" : null;
+}

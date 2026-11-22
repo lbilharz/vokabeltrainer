@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptedAnswers, fnv1a, isCorrect, itemId, norm, sayText } from "./text";
+import { acceptedAnswers, closeness, fnv1a, isCorrect, itemId, norm, sayText } from "./text";
 
 describe("fnv1a", () => {
   it("passt zum Python-Wert (Datei public/audio/fr/62eca1fc.mp3 existiert)", () => {
@@ -83,5 +83,52 @@ describe("acceptedAnswers und isCorrect", () => {
   });
   it("enthält die normierte Grundform", () => {
     expect(acceptedAnswers("Le Roman").has("le roman")).toBe(true);
+  });
+});
+
+describe("closeness", () => {
+  it("erkennt fehlende Akzente", () => {
+    expect(closeness("decouvrir", ["découvrir qn/qc"])).toBe("accents");
+    expect(closeness("le reve", ["le rêve"])).toBe("accents");
+    expect(closeness("coeur", ["cœur"])).toBe("accents");
+  });
+
+  it("erkennt einen Tippfehler", () => {
+    expect(closeness("decuvrir", ["découvrir qn/qc"])).toBe("typo");
+    expect(closeness("heureusment", ["heureusement"])).toBe("typo");
+    // Vertauschte Buchstaben zählen als ein Fehler.
+    expect(closeness("triset", ["triste"])).toBe("typo");
+    expect(closeness("tirset", ["triste"])).toBe(null);
+    expect(closeness("tristes", ["triste"])).toBe("typo");
+  });
+
+  it("erkennt einen fehlenden Artikel", () => {
+    expect(closeness("roman", ["le roman"])).toBe("article");
+    expect(closeness("amour", ["l'amour"])).toBe("article");
+    expect(closeness("gardienne", ["le gardien / la gardienne"])).toBe("article");
+  });
+
+  it("wertet einen falschen Artikel nicht als Tippfehler", () => {
+    expect(closeness("la roman", ["le roman"])).toBe(null);
+    expect(closeness("le fée", ["la fée"])).toBe(null);
+    expect(closeness("un roman", ["le roman"])).toBe(null);
+    // Mit richtigem Artikel bleibt ein Tippfehler ein Tippfehler.
+    expect(closeness("le romam", ["le roman"])).toBe("typo");
+  });
+
+  it("gibt bei kurzen Wörtern keine Nachsicht", () => {
+    expect(closeness("le", ["la"])).toBe(null);
+    expect(closeness("dz", ["da"])).toBe(null);
+  });
+
+  it("lehnt ganz andere Antworten ab", () => {
+    expect(closeness("falsch", ["découvrir qn/qc"])).toBe(null);
+    expect(closeness("", ["le roman"])).toBe(null);
+    expect(closeness("le thème", ["le roman"])).toBe(null);
+  });
+
+  it("erlaubt bei langen Wörtern zwei Fehler", () => {
+    expect(closeness("heureusmnt", ["heureusement"])).toBe("typo");
+    expect(closeness("heursmnt", ["heureusement"])).toBe(null);
   });
 });
