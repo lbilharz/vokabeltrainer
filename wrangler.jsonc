@@ -11,14 +11,14 @@
     "run_worker_first": ["/api/*"]
   },
 
-  // Die echte ID kommt hierher, sobald die Datenbank in der EU angelegt ist.
-  // Automatisches Anlegen beim Deploy nimmt keinen Standort entgegen,
-  // und umziehen kann man D1 hinterher nicht.
+  // Die Datenbank wurde von Hand mit "--jurisdiction eu" angelegt.
+  // Damit bleiben die Daten in der EU. Automatisches Anlegen beim Deploy
+  // nimmt keinen Standort entgegen, und umziehen kann man D1 hinterher nicht.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "travok-db",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "ebac8b43-42b6-40ed-a33b-1d84cad23d34",
       "migrations_dir": "./migrations"
     }
   ],
