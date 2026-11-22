@@ -895,3 +895,155 @@ button.station-row:active .station-dot {
     transition: none !important;
   }
 }
+
+/* ---------- Anmeldung ---------- */
+
+.screen.center {
+  align-items: stretch;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.screen.center h1 {
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.lead {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.welcome {
+  justify-content: center;
+  gap: 24px;
+}
+
+.welcome-head h1 {
+  font-size: 40px;
+  font-weight: 800;
+}
+
+.welcome-head .lead {
+  margin-top: 8px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.form-field input {
+  width: 100%;
+  height: 56px;
+  padding: 0 16px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: var(--rose);
+}
+
+.form-field input.invalid {
+  border-color: var(--rose);
+  background: var(--rose-50);
+}
+
+.field-error {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--rose-dark);
+}
+
+.notice {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--rose-50);
+  color: var(--rose-dark);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hint {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.btn[aria-busy="true"] {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ---------- Konto in den Einstellungen ---------- */
+
+.dialog {
+  max-height: 100dvh;
+  overflow-y: auto;
+}
+
+.account small {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.devices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.devices li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 700;
+  border-bottom: 2px solid var(--track);
+}
+
+.account-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.btn.quiet {
+  min-height: 48px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-bottom-width: 4px;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.note {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green-dark);
+}

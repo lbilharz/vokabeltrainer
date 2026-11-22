@@ -7,21 +7,33 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "db:local": "wrangler d1 migrations apply travok-db --local",
+    "db:remote": "wrangler d1 migrations apply travok-db --remote"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.2.5",
+    "@simplewebauthn/server": "^13.3.3",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.20",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.70.1",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "drizzle-kit": "^0.31.11",
     "typescript": "^7.0.2",
     "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.166.0"
   }
 }

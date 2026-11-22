@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "travok",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-11",
+
+  // Assets werden vom Vite-Plugin gebaut und eingehängt, daher kein "directory".
+  // run_worker_first ist explizit, damit das Routing nicht am Sec-Fetch-Mode-Header hängt.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Die echte ID kommt hierher, sobald die Datenbank in der EU angelegt ist.
+  // Automatisches Anlegen beim Deploy nimmt keinen Standort entgegen,
+  // und umziehen kann man D1 hinterher nicht.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "travok-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "./migrations"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

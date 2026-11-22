@@ -22,3 +22,10 @@ tools/testfotos/
 # Abhängigkeiten und Build
 node_modules/
 dist/
+
+# Cloudflare
+.wrangler/
+worker-configuration.d.ts
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
