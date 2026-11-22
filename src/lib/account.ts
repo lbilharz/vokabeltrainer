@@ -174,10 +174,17 @@ export interface ExtractResponse {
 
 /** Schickt ein Foto zum Lesen. Der Server speichert das Bild nicht. */
 export async function extractPhoto(photo: Blob): Promise<ExtractResponse> {
+  // Das Bild geht als Base64 zum Server. Der Browser wandelt es um, das spart dem Server Rechenzeit.
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Das Bild konnte nicht gelesen werden."));
+    reader.readAsDataURL(photo);
+  });
   const response = await fetch("/api/extract", {
     method: "POST",
-    headers: { "content-type": photo.type || "image/jpeg" },
-    body: photo,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mimeType: photo.type || "image/jpeg", data: dataUrl.slice(dataUrl.indexOf(",") + 1) }),
   });
   const payload = (await response.json().catch(() => null)) as (ExtractResponse & { error?: string }) | null;
   if (!response.ok || !payload) {

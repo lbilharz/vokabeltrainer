@@ -13,10 +13,12 @@ export const extract = new Hono<{ Bindings: Env }>();
 const GEMINI_MODEL = "gemini-3.8-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+/** Größtes Bild in Bytes. Als Base64 ist es ein Drittel länger. */
 const MAX_BODY_BYTES = 3 * 1024 * 1024;
+const MAX_BASE64_CHARS = Math.ceil(MAX_BODY_BYTES / 3) * 4;
 const MAX_PER_DAY = 30;
 const MAX_ITEMS = 400;
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 45_000;
 const RETRY_DELAY_MS = 2000;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -99,19 +101,19 @@ class UpstreamError extends Error {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Base64 in Stücken, damit String.fromCharCode nicht zu viele Argumente bekommt. */
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
+/**
+ * Was der Browser schickt. Das Bild kommt schon als Base64.
+ * So muss der Worker es nicht selbst umwandeln. Das spart Rechenzeit,
+ * und die ist im kostenlosen Tarif knapp.
+ */
+const requestSchema = z.object({
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  data: z.string().min(1).max(MAX_BASE64_CHARS),
+});
 
-/** Eine Anfrage an Gemini. Wirft UpstreamError. Der Key steht nie in einer Meldung. */
-async function callGemini(apiKey: string, mimeType: string, imageBase64: string): Promise<ReadItem[]> {
-  const body = JSON.stringify({
+/** Der Text der Anfrage an Gemini. Er wird einmal gebaut und für beide Lesungen benutzt. */
+function geminiBody(mimeType: string, imageBase64: string): string {
+  return JSON.stringify({
     contents: [
       {
         parts: [{ inline_data: { mime_type: mimeType, data: imageBase64 } }, { text: PROMPT }],
@@ -119,7 +121,13 @@ async function callGemini(apiKey: string, mimeType: string, imageBase64: string)
     ],
     generationConfig: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },
   });
+}
 
+/** Diese Antworten sind meist nur vorübergehend. Dann lohnt ein zweiter Versuch. */
+const RETRY_STATUS = [429, 500, 502, 503, 504];
+
+/** Eine Lesung bei Gemini. Wirft UpstreamError. Der Key steht nie in einer Meldung. */
+async function callGemini(apiKey: string, body: string): Promise<ReadItem[]> {
   const send = async () => {
     try {
       return await fetch(GEMINI_URL, {
@@ -133,8 +141,15 @@ async function callGemini(apiKey: string, mimeType: string, imageBase64: string)
     }
   };
 
-  let response = await send();
-  if (response.status === 503) {
+  // Ein zweiter Versuch bei Überlast, Zeitüberschreitung oder Netzfehler.
+  let response: Response;
+  try {
+    response = await send();
+    if (RETRY_STATUS.includes(response.status)) {
+      await sleep(RETRY_DELAY_MS);
+      response = await send();
+    }
+  } catch {
     await sleep(RETRY_DELAY_MS);
     response = await send();
   }
@@ -187,16 +202,30 @@ extract.post("/extract", async (context) => {
   if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
   const userId = session.userId;
 
-  const mimeType = (context.req.header("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (!IMAGE_TYPES.includes(mimeType)) {
+  const contentType = (context.req.header("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (IMAGE_TYPES.includes(contentType)) {
+    // Eine ältere Fassung der App schickte das rohe Bild. Die Seite muss neu geladen werden.
+    throw new HTTPException(400, { message: "Bitte lade die Seite neu und versuch es noch einmal." });
+  }
+  if (contentType !== "application/json") {
     throw new HTTPException(415, { message: "Nur JPEG, PNG oder WebP." });
   }
-
   const declared = Number(context.req.header("content-length") ?? "0");
-  if (declared > MAX_BODY_BYTES) throw new HTTPException(413, { message: "Das Foto ist zu groß." });
-  const bytes = new Uint8Array(await context.req.arrayBuffer());
-  if (bytes.length > MAX_BODY_BYTES) throw new HTTPException(413, { message: "Das Foto ist zu groß." });
-  if (bytes.length === 0) throw new HTTPException(400, { message: "Kein Foto empfangen." });
+  if (declared > MAX_BASE64_CHARS + 200) throw new HTTPException(413, { message: "Das Foto ist zu groß." });
+
+  const text = await context.req.text();
+  if (text.length > MAX_BASE64_CHARS + 200) throw new HTTPException(413, { message: "Das Foto ist zu groß." });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new HTTPException(400, { message: "Kein Foto empfangen." });
+  }
+  const input = requestSchema.safeParse(parsed);
+  if (!input.success || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.data.data)) {
+    throw new HTTPException(400, { message: "Kein Foto empfangen." });
+  }
+  const { mimeType, data: imageBase64 } = input.data;
 
   // Der Aufruf wird vor Gemini gezählt. Die Zeile wird nur erhöht, solange das Limit nicht erreicht ist.
   const day = Math.floor(Date.now() / 86_400_000);
@@ -218,11 +247,8 @@ extract.post("/extract", async (context) => {
     return context.json({ error: "Die Erkennung ist nicht eingerichtet." }, 503);
   }
 
-  const imageBase64 = toBase64(bytes);
-  const [first, second] = await Promise.allSettled([
-    callGemini(apiKey, mimeType, imageBase64),
-    callGemini(apiKey, mimeType, imageBase64),
-  ]);
+  const body = geminiBody(mimeType, imageBase64);
+  const [first, second] = await Promise.allSettled([callGemini(apiKey, body), callGemini(apiKey, body)]);
 
   for (const result of [first, second]) {
     if (result.status === "rejected") console.error("Fotoerkennung:", String(result.reason));
