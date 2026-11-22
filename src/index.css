@@ -1282,3 +1282,16 @@ button.station-row:active .station-dot {
     animation: none;
   }
 }
+
+.install-hint {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--page);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.install-hint strong {
+  color: var(--ink);
+}

@@ -15,6 +15,8 @@ interface Row extends ExtractedItem {
 
 type Phase = "start" | "reading" | "review";
 
+const MAX_AT_ONCE = 6;
+
 /** Neue Vokabeln: Foto aufnehmen, lesen lassen, prüfen, übernehmen. */
 export function AddSet({ onSave, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>("start");
@@ -22,32 +24,43 @@ export function AddSet({ onSave, onClose }: Props) {
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [single, setSingle] = useState(false);
+  /** Bei mehreren Bildern auf einmal: welches gerade gelesen wird. */
+  const [progress, setProgress] = useState({ current: 1, total: 1 });
   const nextKey = useRef(0);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const read = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // Leeren, damit dasselbe Bild noch einmal gewählt werden kann.
+    // Mehr als sechs Seiten auf einmal dauern zu lange. Der Rest geht im nächsten Durchgang.
+    const files = [...(event.target.files ?? [])].slice(0, MAX_AT_ONCE);
+    // Leeren, damit dieselben Bilder noch einmal gewählt werden können.
     event.target.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
     setError(null);
     setPhase("reading");
-    try {
-      const result = await extractPhoto(await shrinkPhoto(file));
-      if (result.items.length === 0) {
-        throw new Error("Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.");
+    let added = 0;
+    let failure: string | null = null;
+    // Eine Seite nach der anderen. So bleibt die Reihenfolge der Bilder erhalten.
+    for (const [index, file] of files.entries()) {
+      setProgress({ current: index + 1, total: files.length });
+      try {
+        const result = await extractPhoto(await shrinkPhoto(file));
+        if (result.items.length === 0) {
+          throw new Error("Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.");
+        }
+        if (result.readings === 1) setSingle(true);
+        const rowsOfPage = result.items.map((item) => ({ ...item, key: nextKey.current++ }));
+        setRows((prev) => [...prev, ...rowsOfPage]);
+        added += rowsOfPage.length;
+        // Vorschlag für den Namen: die Überschrift von der Seite, wenn es eine gab.
+        setLabel((prev) => prev || result.items.find((item) => item.c)?.c || "");
+      } catch (err) {
+        const reason = err instanceof Error && err.message ? err.message : "Das hat nicht geklappt. Versuch es noch einmal.";
+        failure = files.length > 1 ? `Bild ${index + 1} von ${files.length}: ${reason}` : reason;
       }
-      if (result.readings === 1) setSingle(true);
-      const added = result.items.map((item) => ({ ...item, key: nextKey.current++ }));
-      setRows((prev) => [...prev, ...added]);
-      // Vorschlag für den Namen: die Überschrift von der Seite, wenn es eine gab.
-      setLabel((prev) => prev || result.items.find((item) => item.c)?.c || "");
-      setPhase("review");
-    } catch (err) {
-      setError(err instanceof Error && err.message ? err.message : "Das hat nicht geklappt. Versuch es noch einmal.");
-      setPhase(rows.length > 0 ? "review" : "start");
     }
+    if (failure) setError(failure);
+    setPhase(added > 0 || rows.length > 0 ? "review" : "start");
   };
 
   const change = (key: number, field: "fr" | "de", value: string) =>
@@ -74,7 +87,7 @@ export function AddSet({ onSave, onClose }: Props) {
   const inputs = (
     <>
       <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={read} />
-      <input ref={fileInput} type="file" accept="image/*" hidden onChange={read} />
+      <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={read} />
     </>
   );
 
@@ -84,8 +97,12 @@ export function AddSet({ onSave, onClose }: Props) {
         <div className="reading-mark" aria-hidden="true">
           <Icon name="list" size={48} stroke={2} />
         </div>
-        <h1>Ich lese die Seite</h1>
-        <p className="lead">Das dauert etwa eine halbe Minute. Ich lese sie zur Sicherheit zweimal.</p>
+        <h1>{progress.total > 1 ? `Ich lese Seite ${progress.current} von ${progress.total}` : "Ich lese die Seite"}</h1>
+        <p className="lead">
+          {progress.total > 1
+            ? "Jede Seite dauert etwa eine halbe Minute. Ich lese sie zur Sicherheit zweimal."
+            : "Das dauert etwa eine halbe Minute. Ich lese sie zur Sicherheit zweimal."}
+        </p>
       </main>
     );
   }
@@ -168,9 +185,14 @@ export function AddSet({ onSave, onClose }: Props) {
         </ul>
 
         <div className="addset-actions">
-          <button className="btn quiet" onClick={() => cameraInput.current?.click()}>
-            Noch eine Seite fotografieren
-          </button>
+          <div className="account-actions">
+            <button className="btn quiet" onClick={() => cameraInput.current?.click()}>
+              Noch ein Foto
+            </button>
+            <button className="btn quiet" onClick={() => fileInput.current?.click()}>
+              Bilder wählen
+            </button>
+          </div>
           <button className={`btn primary ${valid.length === 0 ? "waiting" : ""}`} onClick={save}>
             {valid.length === 1 ? "1 Vokabel übernehmen" : `${valid.length} Vokabeln übernehmen`}
           </button>
@@ -226,7 +248,7 @@ export function AddSet({ onSave, onClose }: Props) {
         </button>
         <button className="btn quiet tall" onClick={() => fileInput.current?.click()}>
           <Icon name="image" size={24} stroke={2.2} />
-          Scan oder Bild auswählen
+          Scans oder Bilder auswählen
         </button>
       </div>
     </main>

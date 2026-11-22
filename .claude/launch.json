@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "8777", "--strictPort"],
       "port": 8777
+    },
+    {
+      "name": "vokabeltrainer-build",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview", "--", "--port", "8791", "--strictPort"],
+      "port": 8791
     }
   ]
 }

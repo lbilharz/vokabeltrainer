@@ -110,6 +110,38 @@ interface EnsureResponse {
   stopped?: "limit" | "unconfigured" | "failed";
 }
 
+/** Derselbe Name wie in public/sw.js. */
+const AUDIO_CACHE = "audio-v1";
+
+function urlFor(text: string): string | null {
+  const hash = fnv1a(text);
+  if (bundled.has(`fr/${hash}`)) return `${BASE}fr/${hash}.mp3`;
+  if (remote.has(hash)) return `${REMOTE_BASE}${hash}.mp3`;
+  return null;
+}
+
+/**
+ * Lädt die Aufnahmen der eigenen Wörter schon einmal herunter.
+ * So spielen sie später auch ohne Netz. Läuft still im Hintergrund.
+ */
+async function keepForOffline(texts: string[]): Promise<void> {
+  if (!("caches" in window)) return;
+  try {
+    const cache = await caches.open(AUDIO_CACHE);
+    for (const text of new Set(texts)) {
+      const url = urlFor(text);
+      if (!url || (await cache.match(url))) continue;
+      const response = await fetch(url);
+      // Eine fehlende Datei kommt als HTML-Seite zurück. Die gehört nicht in den Cache.
+      if (response.ok && (response.headers.get("content-type") ?? "").startsWith("audio/")) {
+        await cache.put(url, response);
+      }
+    }
+  } catch {
+    // Kein Netz oder kein Platz. Dann eben beim nächsten Mal.
+  }
+}
+
 const BATCH = 10;
 let ensuring = false;
 let queued: string[] | null = null;
@@ -167,5 +199,6 @@ export async function ensureAudio(texts: string[]): Promise<void> {
     const next = queued;
     queued = null;
     if (next) void ensureAudio(next);
+    else void keepForOffline(texts);
   }
 }

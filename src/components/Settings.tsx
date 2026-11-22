@@ -33,6 +33,10 @@ export function Settings(props: Props) {
   const { user, settings, setLabel, onChange, onClose } = props;
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Vom Home-Bildschirm gestartet läuft die App ohne Adressleiste. Dann braucht es den Hinweis nicht.
+  const installed =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
   const reload = () => {
     listDevices()
@@ -101,6 +105,12 @@ export function Settings(props: Props) {
             ))}
           </div>
         </div>
+
+        {!installed && (
+          <p className="install-hint">
+            <strong>Wie eine App benutzen:</strong> Tippe im Browser auf „Teilen“ und dann auf „Zum Home-Bildschirm“.
+          </p>
+        )}
 
         <section className="field account">
           <strong>Konto: {user.displayName}</strong>

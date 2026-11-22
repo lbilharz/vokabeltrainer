@@ -133,6 +133,8 @@ export function Trainer({ user, onSignedOut }: Props) {
     void syncNow();
     const onVisibility = () => void syncNow();
     document.addEventListener("visibilitychange", onVisibility);
+    // Was ohne Netz geübt wurde, geht mit, sobald das Netz zurück ist.
+    window.addEventListener("online", onVisibility);
     // Offene Änderungen gehen spätestens nach einer Minute mit.
     const timer = window.setInterval(() => {
       const current = dataRef.current;
@@ -140,6 +142,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     }, 60_000);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onVisibility);
       window.clearInterval(timer);
     };
   }, [syncNow]);
