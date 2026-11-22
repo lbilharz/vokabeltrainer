@@ -44,7 +44,8 @@ Für jeden Eintrag:
   Steht dort nur eine kursive Erklärung (zum Beispiel bei Städtenamen), dann nimm diese Erklärung.
 - "n": Merkhinweise zu diesem Eintrag, mehrere mit " · " getrennt. Dazu gehören kursive Zusätze in der
   rechten Spalte (zum Beispiel "wird wie ouvrir konjugiert", "kausal"), verwandte Wörter mit Pfeil
-  (zum Beispiel "→ rêver"), Gleich- und Gegenteile ("= ...", "≠ ...") und Beispielsätze.
+  (zum Beispiel "→ rêver") sowie Gleich- und Gegenteile ("= ...", "≠ ...").
+  Höchstens 80 Zeichen. Keine Beispielsätze und kein Text aus "Merke"-Kästen.
   Keine Seitenverweise wie "Verbes, p. 156". Keine englischen Übersetzungen. Sonst null.
 - "c": die Abschnittsüberschrift, unter der der Eintrag steht (zum Beispiel "Volet 3").
   Ist auf dem Foto keine Überschrift über dem Eintrag zu sehen, dann null.

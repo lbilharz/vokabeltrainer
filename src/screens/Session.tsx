@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type Step, makeStep, targetsFor } from "@shared/session";
 import { getCard, introduce, rate } from "@shared/srs";
 import { type Closeness, closeness, isCorrect, norm } from "@shared/text";
@@ -49,12 +49,20 @@ export function Session(props: Props) {
   const stats = useRef({ items: new Set<string>(), again: new Set<string>(), introduced: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLElement>(null);
+  /** Höhe der Rückmeldung. So viel Platz bleibt darunter frei, damit nichts verdeckt bleibt. */
+  const [sheetHeight, setSheetHeight] = useState(0);
 
   const step = queue[pos]!;
   const item = itemsById.get(step.itemId)!;
   const pool = props.poolFor(item);
   const hasChoices = step.kind === "intro" || step.kind === "listenChoice";
   const hidesWord = step.kind === "listenChoice" || step.kind === "listenType";
+
+  // Die Rückmeldung klebt am unteren Rand. Der Inhalt darüber bekommt so viel Luft, wie sie hoch ist.
+  useLayoutEffect(() => {
+    setSheetHeight(result ? (sheetRef.current?.offsetHeight ?? 0) : 0);
+  }, [result, pos]);
 
   // Nach dem Prüfen liegt der Fokus auf "Weiter". So geht es mit Enter weiter.
   useEffect(() => {
@@ -133,7 +141,10 @@ export function Session(props: Props) {
   const total = queue.length + queue.slice(done).filter((s) => s.kind === "intro").length;
 
   return (
-    <main className={`screen session ${result ? "answered" : ""}`}>
+    <main
+      className={`screen session ${result ? "answered" : ""}`}
+      style={result ? { paddingBottom: sheetHeight + 16 } : undefined}
+    >
       <header className="session-top">
         <button className="icon-btn" aria-label="Üben beenden" onClick={props.onClose}>
           <Icon name="x" size={26} stroke={2.6} />
@@ -238,7 +249,12 @@ export function Session(props: Props) {
       )}
 
       {result && (
-        <footer className={`sheet ${result.near ? "near" : result.correct ? "good" : "bad"}`} aria-live="polite">
+        <footer
+          ref={sheetRef}
+          className={`sheet ${result.near ? "near" : result.correct ? "good" : "bad"}`}
+          aria-live="polite"
+        >
+          <div className="sheet-body">
           <div className="sheet-title">
             <span className="sheet-mark">
               <Icon name={result.correct ? "check" : "x"} size={20} stroke={3.2} />
@@ -265,6 +281,7 @@ export function Session(props: Props) {
             <button className="speak-btn small" aria-label={`${item.fr} anhören`} onClick={say}>
               <Icon name="speaker" size={24} stroke={2.2} />
             </button>
+          </div>
           </div>
           <button ref={nextRef} className="btn primary" onClick={advance}>
             Weiter

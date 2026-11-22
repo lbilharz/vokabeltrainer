@@ -39,10 +39,10 @@
     }
   ],
 
-  // Stündlich. Der Worker prüft selbst die Ortszeit in Berlin und erinnert zur gewählten Stunde.
+  // Alle 15 Minuten. Der Worker prüft selbst die Ortszeit in Berlin und erinnert zur gewählten Viertelstunde.
   // Crons laufen in UTC. So muss niemand zweimal im Jahr an die Sommerzeit denken.
   "triggers": {
-    "crons": ["0 * * * *"]
+    "crons": ["*/15 * * * *"]
   },
 
   "observability": {

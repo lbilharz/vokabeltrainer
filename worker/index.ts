@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
 import { audio } from "./audio";
 import { auth } from "./auth";
+import { check } from "./check";
 import { extract } from "./extract";
 import { push, runReminders } from "./push";
 import { sync } from "./sync";
@@ -11,6 +12,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.route("/api", sync);
 app.route("/api", extract);
+app.route("/api", check);
 app.route("/api", audio);
 app.route("/api", push);
 app.route("/api/auth", auth);
@@ -30,7 +32,7 @@ app.onError((error, context) => {
 
 export default {
   fetch: app.fetch,
-  // Der Cron läuft stündlich. Die Arbeit läuft weiter, auch wenn der Handler schon zurück ist.
+  // Der Cron läuft alle 15 Minuten. Die Arbeit läuft weiter, auch wenn der Handler schon zurück ist.
   scheduled(_controller, env, ctx) {
     ctx.waitUntil(runReminders(new Date(), env));
   },

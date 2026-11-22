@@ -93,6 +93,8 @@ const endpointBody = z.object({ endpoint: z.string().min(1).max(1000) });
 const putBody = z.object({
   endpoint: z.string().min(1).max(1000),
   hour: z.number().int().min(0).max(23),
+  // Nur Viertelstunden sind erlaubt.
+  minute: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45)]).default(0),
 });
 
 async function requireUser(context: Parameters<typeof readSession>[0], db: ReturnType<typeof drizzle<typeof schema>>) {
@@ -129,7 +131,8 @@ function endpointAllowed(endpoint: string, requestUrl: string): boolean {
  */
 push.get("/reminder.ics", (context) => {
   const hour = Number(context.req.query("hour") ?? "17");
-  return new Response(buildCalendar(Number.isFinite(hour) ? hour : 17, new Date()), {
+  const minute = Number(context.req.query("minute") ?? "0");
+  return new Response(buildCalendar(Number.isFinite(hour) ? hour : 17, Number.isFinite(minute) ? minute : 0, new Date()), {
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
       "Content-Disposition": 'inline; filename="vokabeln.ics"',
@@ -151,12 +154,12 @@ push.post("/push/state", async (context) => {
   if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
 
   const rows = await db
-    .select({ hour: schema.pushSubscriptions.hour })
+    .select({ hour: schema.pushSubscriptions.hour, minute: schema.pushSubscriptions.minute })
     .from(schema.pushSubscriptions)
     .where(and(eq(schema.pushSubscriptions.endpoint, input.data.endpoint), eq(schema.pushSubscriptions.userId, userId)))
     .limit(1);
   const row = rows[0];
-  return context.json({ enabled: row !== undefined, hour: row?.hour ?? null });
+  return context.json({ enabled: row !== undefined, hour: row?.hour ?? null, minute: row?.minute ?? null });
 });
 
 push.put("/push", async (context) => {
@@ -164,19 +167,19 @@ push.put("/push", async (context) => {
   const userId = await requireUser(context, db);
   const input = putBody.safeParse(await readJson(context.req.raw));
   if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
-  const { endpoint, hour } = input.data;
+  const { endpoint, hour, minute } = input.data;
   if (!endpointAllowed(endpoint, context.req.url)) {
     throw new HTTPException(400, { message: "Ungültige Adresse für Erinnerungen." });
   }
 
-  // Neue Zeile: last_sent_day bleibt null. Vorhandene Zeile: Nutzer und Stunde ändern, Rest bleibt.
+  // Neue Zeile: last_sent_day bleibt null. Vorhandene Zeile: Nutzer, Stunde und Minute ändern, Rest bleibt.
   // Ein Endpunkt eines anderen Nutzers wandert zu diesem Nutzer (gemeinsames Tablet).
   await db
     .insert(schema.pushSubscriptions)
-    .values({ id: crypto.randomUUID(), userId, endpoint, hour })
+    .values({ id: crypto.randomUUID(), userId, endpoint, hour, minute })
     .onConflictDoUpdate({
       target: schema.pushSubscriptions.endpoint,
-      set: { userId, hour },
+      set: { userId, hour, minute },
     });
   return context.json({ ok: true });
 });
@@ -208,7 +211,7 @@ function countItems(rows: { data: string | null }[]): number {
   return total;
 }
 
-/** Läuft stündlich. Sendet leere Web-Push-Nachrichten an Geräte, deren Stunde jetzt ist. */
+/** Läuft alle 15 Minuten. Sendet leere Web-Push-Nachrichten an Geräte, deren Viertelstunde jetzt ist. */
 export async function runReminders(now: Date, env: Env): Promise<void> {
   const vapid = await loadVapid(env);
   if (!vapid) {
@@ -216,13 +219,14 @@ export async function runReminders(now: Date, env: Env): Promise<void> {
     return;
   }
   const db = drizzle(env.DB, { schema });
-  const { day, hour, dayStartMs } = berlinNow(now);
+  const { day, hour, minute, dayStartMs } = berlinNow(now);
+  const slot = Math.floor(minute / 15) * 15;
   const table = schema.pushSubscriptions;
 
   const subscriptions = await db
     .select({ id: table.id, userId: table.userId, endpoint: table.endpoint })
     .from(table)
-    .where(and(eq(table.hour, hour), or(isNull(table.lastSentDay), ne(table.lastSentDay, day))))
+    .where(and(eq(table.hour, hour), eq(table.minute, slot), or(isNull(table.lastSentDay), ne(table.lastSentDay, day))))
     .limit(MAX_PER_RUN);
 
   const markDone = (id: string) => db.update(table).set({ lastSentDay: day }).where(eq(table.id, id));

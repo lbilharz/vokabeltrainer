@@ -15,7 +15,7 @@ const formatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 /** Wanduhr in Berlin als UTC-Millisekunden und als Teile. */
-function wallClock(ms: number): { wallMs: number; year: number; month: number; day: number; hour: number } {
+function wallClock(ms: number): { wallMs: number; year: number; month: number; day: number; hour: number; minute: number } {
   const parts: Record<string, number> = {};
   for (const part of formatter.formatToParts(new Date(ms))) {
     if (part.type !== "literal") parts[part.type] = Number(part.value);
@@ -25,11 +25,11 @@ function wallClock(ms: number): { wallMs: number; year: number; month: number; d
   const day = parts.day!;
   const hour = parts.hour! % 24;
   const wallMs = Date.UTC(year, month - 1, day, hour, parts.minute!, parts.second!);
-  return { wallMs, year, month, day, hour };
+  return { wallMs, year, month, day, hour, minute: parts.minute! };
 }
 
-/** Kalendertag und Stunde in Europe/Berlin. */
-export function berlinNow(date: Date): { day: number; hour: number; dayStartMs: number } {
+/** Kalendertag, Stunde und Minute in Europe/Berlin. */
+export function berlinNow(date: Date): { day: number; hour: number; minute: number; dayStartMs: number } {
   // Auf ganze Sekunden gekürzt, weil die Wanduhr keine Millisekunden liefert.
   const ms = Math.floor(date.getTime() / 1000) * 1000;
   const clock = wallClock(ms);
@@ -41,6 +41,7 @@ export function berlinNow(date: Date): { day: number; hour: number; dayStartMs: 
   return {
     day: midnightWall / DAY_MS,
     hour: clock.hour,
+    minute: clock.minute,
     dayStartMs: midnightWall - offsetAtGuess,
   };
 }
@@ -69,9 +70,14 @@ export function shouldRemind(input: {
  * des Geräts. Die Uhrzeit steht ohne Zeitzone da und gilt damit in der Ortszeit des Geräts.
  * Die Kennung ist fest. Wer den Termin noch einmal hinzufügt, ersetzt den alten.
  */
-export function buildCalendar(hour: number, now: Date): string {
+export function buildCalendar(hour: number, minute: number, now: Date): string {
   const two = (n: number) => String(n).padStart(2, "0");
   const h = Math.min(Math.max(Math.round(hour), 0), 23);
+  // Auf das Viertel abrunden: 0, 15, 30 oder 45.
+  const m = Math.min(Math.max(Math.floor((Number.isFinite(minute) ? minute : 0) / 15) * 15, 0), 45);
+  // Das Ende liegt 15 Minuten später. Um 23:45 endet der Termin um 23:59 am selben Tag.
+  const endTotal = Math.min(h * 60 + m + 15, 23 * 60 + 59);
+  const end = `${two(Math.floor(endTotal / 60))}${two(endTotal % 60)}`;
   const day = `${now.getUTCFullYear()}${two(now.getUTCMonth() + 1)}${two(now.getUTCDate())}`;
   const stamp = `${day}T${two(now.getUTCHours())}${two(now.getUTCMinutes())}${two(now.getUTCSeconds())}Z`;
   return [
@@ -83,8 +89,8 @@ export function buildCalendar(hour: number, now: Date): string {
     "BEGIN:VEVENT",
     "UID:taegliche-erinnerung@vok.cards",
     `DTSTAMP:${stamp}`,
-    `DTSTART:${day}T${two(h)}0000`,
-    `DTEND:${day}T${two(h)}1500`,
+    `DTSTART:${day}T${two(h)}${two(m)}00`,
+    `DTEND:${day}T${end}00`,
     "RRULE:FREQ=DAILY",
     "SUMMARY:Vokabeln üben",
     "DESCRIPTION:Ein paar Karten warten auf dich: https://vok.cards",

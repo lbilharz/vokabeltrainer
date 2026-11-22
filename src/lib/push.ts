@@ -8,7 +8,8 @@ import { apiGet, apiPost } from "./api";
  * Der schickt zur vollen Stunde ein leeres Signal. Den Text zeigt die App selbst.
  */
 
-export const DEFAULT_HOUR = 17;
+/** Voreinstellung: 17 Uhr, als Minuten seit Mitternacht. */
+export const DEFAULT_TIME = 17 * 60;
 
 export interface PushState {
   /** false, solange der Server keine Mitteilungen verschicken kann. Dann bleibt nur der Kalender. */
@@ -18,7 +19,8 @@ export interface PushState {
   /** true, wenn Mitteilungen in den Einstellungen des Geräts verboten sind. */
   blocked: boolean;
   enabled: boolean;
-  hour: number;
+  /** Uhrzeit der Erinnerung als Minuten seit Mitternacht, in Schritten von 15. */
+  time: number;
 }
 
 function supported(): boolean {
@@ -44,24 +46,26 @@ export async function readPushState(): Promise<PushState> {
     () => true,
     () => false,
   );
-  const off: PushState = { configured, supported: false, blocked: false, enabled: false, hour: DEFAULT_HOUR };
+  const off: PushState = { configured, supported: false, blocked: false, enabled: false, time: DEFAULT_TIME };
   const reg = await registration();
   if (!reg) return off;
   const blocked = Notification.permission === "denied";
   try {
     const subscription = await reg.pushManager.getSubscription();
     if (!subscription) return { ...off, supported: true, blocked };
-    const state = await apiPost<{ enabled: boolean; hour: number | null }>("/api/push/state", {
-      endpoint: subscription.endpoint,
-    });
-    return { configured, supported: true, blocked, enabled: state.enabled, hour: state.hour ?? DEFAULT_HOUR };
+    const state = await apiPost<{ enabled: boolean; hour: number | null; minute?: number | null }>(
+      "/api/push/state",
+      { endpoint: subscription.endpoint },
+    );
+    const time = state.hour === null ? DEFAULT_TIME : state.hour * 60 + (state.minute ?? 0);
+    return { configured, supported: true, blocked, enabled: state.enabled, time };
   } catch {
     return { ...off, supported: true, blocked };
   }
 }
 
 /** Muss direkt aus einem Klick aufgerufen werden. Sonst fragt das Gerät nicht nach der Erlaubnis. */
-export async function enablePush(hour: number): Promise<void> {
+export async function enablePush(time: number): Promise<void> {
   const reg = await registration();
   if (!reg) throw new Error("Auf diesem Gerät gibt es keine Mitteilungen.");
   const permission = await Notification.requestPermission();
@@ -75,7 +79,7 @@ export async function enablePush(hour: number): Promise<void> {
   await fetch("/api/push", {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ endpoint: subscription.endpoint, hour }),
+    body: JSON.stringify({ endpoint: subscription.endpoint, hour: Math.floor(time / 60), minute: time % 60 }),
   }).then((response) => {
     if (!response.ok) throw new Error("Die Erinnerung konnte nicht gespeichert werden.");
   });

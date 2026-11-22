@@ -1459,3 +1459,46 @@ a.btn {
   background: var(--rose);
   transition: width 0.15s linear;
 }
+
+.checking {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ---------- Rückmeldung: klebt unten, "Weiter" ist immer zu sehen ---------- */
+
+.sheet,
+.session.answered .sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 5;
+  transform: translateX(-50%);
+  width: min(100%, 480px);
+  max-height: 80dvh;
+  margin: 0;
+}
+
+/* Wird der Inhalt zu lang, rollt nur er. Der Knopf darunter bleibt stehen. */
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Lange Merkhinweise werden gekürzt. Vollständig stehen sie in der Wortliste. */
+.solution-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.session.answered .options,
+.session.answered .answer {
+  margin-bottom: 0;
+}

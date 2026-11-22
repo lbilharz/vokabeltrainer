@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SyncStatus } from "../Trainer";
 import { type Device, type User, addThisDevice, listDevices, logout, removeDevice } from "../lib/account";
-import { DEFAULT_HOUR, type PushState, disablePush, enablePush, readPushState } from "../lib/push";
+import { DEFAULT_TIME, type PushState, disablePush, enablePush, readPushState } from "../lib/push";
 import type { Settings as SettingsData } from "../lib/store";
 import { Icon } from "./Icon";
 
@@ -36,20 +36,21 @@ export function Settings(props: Props) {
   const [note, setNote] = useState<string | null>(null);
   const [push, setPush] = useState<PushState | null>(null);
   const [pushNote, setPushNote] = useState<string | null>(null);
-  const [hour, setHour] = useState(DEFAULT_HOUR);
+  /** Uhrzeit der Erinnerung als Minuten seit Mitternacht. */
+  const [time, setTime] = useState(DEFAULT_TIME);
 
   useEffect(() => {
     void readPushState().then((state) => {
       setPush(state);
-      setHour(state.hour);
+      setTime(state.time);
     });
   }, []);
 
   /** Schaltet die Erinnerung ein, aus oder auf eine andere Stunde. */
-  const changePush = async (enabled: boolean, hour: number) => {
+  const changePush = async (enabled: boolean, at: number) => {
     setPushNote(null);
     try {
-      if (enabled) await enablePush(hour);
+      if (enabled) await enablePush(at);
       else await disablePush();
       setPush(await readPushState());
     } catch (error) {
@@ -135,17 +136,18 @@ export function Settings(props: Props) {
           <label className="select-row">
             <span>Uhrzeit</span>
             <select
-              value={hour}
+              value={time}
               onChange={(event) => {
                 const next = Number(event.target.value);
-                setHour(next);
+                setTime(next);
                 // Läuft die Mitteilung schon, gilt die neue Uhrzeit sofort.
                 if (push?.enabled) void changePush(true, next);
               }}
             >
-              {Array.from({ length: 15 }, (_, i) => i + 7).map((h) => (
-                <option key={h} value={h}>
-                  {h} Uhr
+              {/* Von 7:00 bis 21:45 in Viertelstunden. */}
+              {Array.from({ length: 60 }, (_, i) => 7 * 60 + i * 15).map((t) => (
+                <option key={t} value={t}>
+                  {Math.floor(t / 60)}:{String(t % 60).padStart(2, "0")} Uhr
                 </option>
               ))}
             </select>
@@ -165,7 +167,7 @@ export function Settings(props: Props) {
                 role="switch"
                 checked={push.enabled}
                 disabled={!push.supported}
-                onChange={(event) => void changePush(event.target.checked, hour)}
+                onChange={(event) => void changePush(event.target.checked, time)}
               />
             </label>
           )}
@@ -174,7 +176,7 @@ export function Settings(props: Props) {
               {pushNote}
             </p>
           )}
-          <a className="btn quiet" href={`/api/reminder.ics?hour=${hour}`}>
+          <a className="btn quiet" href={`/api/reminder.ics?hour=${Math.floor(time / 60)}&minute=${time % 60}`}>
             In den Kalender eintragen
           </a>
           <small className="help">

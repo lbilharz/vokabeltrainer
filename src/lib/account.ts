@@ -172,6 +172,18 @@ export interface ExtractResponse {
   readings: 1 | 2;
 }
 
+/** Warum die Gegenprobe eine Zeile verdächtig findet. */
+export type CheckKind = "schreibweise" | "passt_nicht" | "verschmolzen";
+
+/**
+ * Gegenprobe: ein zweites Modell prüft, ob die Wortpaare zusammenpassen.
+ * `i` ist die Position in der geschickten Liste.
+ */
+export async function checkItems(items: { fr: string; de: string }[]): Promise<{ i: number; kind: CheckKind }[]> {
+  const { flags } = await apiPost<{ flags: { i: number; kind: CheckKind }[] }>("/api/check", { items });
+  return flags;
+}
+
 /** Was während des Lesens passiert. Damit zeigt die App echten Fortschritt. */
 export type ExtractProgress =
   /** Das Foto wird gesendet. `fraction` läuft von 0 bis 1. */

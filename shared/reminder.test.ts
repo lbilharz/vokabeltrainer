@@ -37,6 +37,11 @@ describe("berlinNow", () => {
     expect(now.dayStartMs).toBeLessThanOrEqual(date.getTime());
   });
 
+  it("liefert die Minute in Berliner Zeit", () => {
+    expect(berlinNow(new Date("2026-01-15T16:45:10Z")).minute).toBe(45);
+    expect(berlinNow(new Date("2026-07-15T15:07:00Z")).minute).toBe(7);
+  });
+
   it("rechnet Millisekunden mit", () => {
     const now = berlinNow(new Date("2026-01-15T16:30:00.789Z"));
     expect(now.hour).toBe(17);
@@ -74,7 +79,7 @@ describe("shouldRemind", () => {
 });
 
 describe("buildCalendar", () => {
-  const text = buildCalendar(17, new Date("2026-11-22T10:05:09Z"));
+  const text = buildCalendar(17, 0, new Date("2026-11-22T10:05:09Z"));
 
   it("legt einen täglichen Termin zur gewählten Stunde an", () => {
     expect(text).toContain("DTSTART:20261122T170000");
@@ -95,7 +100,31 @@ describe("buildCalendar", () => {
   });
 
   it("begrenzt die Stunde auf 0 bis 23", () => {
-    expect(buildCalendar(99, new Date("2026-11-22T10:00:00Z"))).toContain("T230000");
-    expect(buildCalendar(7, new Date("2026-11-22T10:00:00Z"))).toContain("T070000");
+    expect(buildCalendar(99, 0, new Date("2026-11-22T10:00:00Z"))).toContain("T230000");
+    expect(buildCalendar(7, 0, new Date("2026-11-22T10:00:00Z"))).toContain("T070000");
+  });
+
+  it("legt den Termin auf 17:30", () => {
+    const t = buildCalendar(17, 30, new Date("2026-11-22T10:00:00Z"));
+    expect(t).toContain("DTSTART:20261122T173000");
+    expect(t).toContain("DTEND:20261122T174500");
+  });
+
+  it("lässt 17:45 um 18:00 enden", () => {
+    const t = buildCalendar(17, 45, new Date("2026-11-22T10:00:00Z"));
+    expect(t).toContain("DTSTART:20261122T174500");
+    expect(t).toContain("DTEND:20261122T180000");
+  });
+
+  it("lässt 23:45 um 23:59 am selben Tag enden", () => {
+    const t = buildCalendar(23, 45, new Date("2026-11-22T10:00:00Z"));
+    expect(t).toContain("DTSTART:20261122T234500");
+    expect(t).toContain("DTEND:20261122T235900");
+  });
+
+  it("rundet die Minute auf das Viertel ab und begrenzt sie", () => {
+    expect(buildCalendar(8, 29, new Date("2026-11-22T10:00:00Z"))).toContain("DTSTART:20261122T081500");
+    expect(buildCalendar(8, 99, new Date("2026-11-22T10:00:00Z"))).toContain("DTSTART:20261122T084500");
+    expect(buildCalendar(8, -5, new Date("2026-11-22T10:00:00Z"))).toContain("DTSTART:20261122T080000");
   });
 });

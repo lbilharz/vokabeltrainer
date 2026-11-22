@@ -175,6 +175,7 @@ export const pushSubscriptions = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     endpoint: text("endpoint").notNull().unique(),
     hour: integer("hour").notNull(),
+    minute: integer("minute").notNull().default(0),
     lastSentDay: integer("last_sent_day"),
     createdAt: createdAt(),
   },

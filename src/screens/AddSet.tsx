@@ -1,7 +1,7 @@
 import { type ChangeEvent, useRef, useState } from "react";
 import type { RawItem } from "@shared/types";
 import { Icon } from "../components/Icon";
-import { type ExtractedItem, extractPhoto } from "../lib/account";
+import { type CheckKind, type ExtractedItem, checkItems, extractPhoto } from "../lib/account";
 import { shrinkPhoto } from "../lib/image";
 
 interface Props {
@@ -11,7 +11,17 @@ interface Props {
 
 interface Row extends ExtractedItem {
   key: number;
+  /** Warum die Zeile gelb ist. Steht über dem Wort. */
+  reason?: string;
 }
+
+const DIFFERENT_READINGS = "Die zwei Lesungen waren verschieden";
+
+const CHECK_TEXT: Record<CheckKind, string> = {
+  schreibweise: "Stimmt die Schreibweise?",
+  passt_nicht: "Passt die Übersetzung zum Wort?",
+  verschmolzen: "Sind das zwei Einträge?",
+};
 
 type Phase = "start" | "reading" | "review";
 
@@ -42,6 +52,33 @@ export function AddSet({ onSave, onClose }: Props) {
   /** Bei mehreren Bildern auf einmal: welches gerade gelesen wird. */
   const [progress, setProgress] = useState({ current: 1, total: 1 });
   const [live, setLive] = useState<Live>({ stage: "sending", sent: 0, words: [] });
+  /** Wie viele Gegenproben gerade laufen. */
+  const [checking, setChecking] = useState(0);
+
+  /**
+   * Gegenprobe im Hintergrund: ein zweites Modell prüft, ob die Wortpaare zusammenpassen.
+   * Sie markiert nur. Schlägt sie fehl, bleibt die Liste, wie sie ist.
+   */
+  const runCheck = (page: Row[]) => {
+    setChecking((n) => n + 1);
+    checkItems(page.map((row) => ({ fr: row.fr, de: row.de })))
+      .then((flags) => {
+        const byKey = new Map(flags.map((flag) => [page[flag.i]?.key, flag.kind]));
+        setRows((prev) =>
+          prev.map((row) => {
+            const kind = byKey.get(row.key);
+            const sent = page.find((p) => p.key === row.key);
+            // Hat das Kind die Zeile inzwischen geändert, gilt die Gegenprobe nicht mehr.
+            if (!kind || !sent || sent.fr !== row.fr || sent.de !== row.de) return row;
+            return { ...row, check: true, reason: row.reason ?? CHECK_TEXT[kind] };
+          }),
+        );
+      })
+      .catch(() => {
+        // Ohne Gegenprobe bleibt die doppelte Lesung als Sicherung.
+      })
+      .finally(() => setChecking((n) => n - 1));
+  };
   const nextKey = useRef(0);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -77,8 +114,13 @@ export function AddSet({ onSave, onClose }: Props) {
           throw new Error("Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.");
         }
         if (result.readings === 1) setSingle(true);
-        const rowsOfPage = result.items.map((item) => ({ ...item, key: nextKey.current++ }));
+        const rowsOfPage: Row[] = result.items.map((item) => ({
+          ...item,
+          key: nextKey.current++,
+          reason: item.check ? DIFFERENT_READINGS : undefined,
+        }));
         setRows((prev) => [...prev, ...rowsOfPage]);
+        runCheck(rowsOfPage);
         added += rowsOfPage.length;
         // Vorschlag für den Namen: die Überschrift von der Seite, wenn es eine gab.
         setLabel((prev) => prev || result.items.find((item) => item.c)?.c || "");
@@ -92,7 +134,9 @@ export function AddSet({ onSave, onClose }: Props) {
   };
 
   const change = (key: number, field: "fr" | "de", value: string) =>
-    setRows((prev) => prev.map((row) => (row.key === key ? { ...row, [field]: value, check: false } : row)));
+    setRows((prev) =>
+      prev.map((row) => (row.key === key ? { ...row, [field]: value, check: false, reason: undefined } : row)),
+    );
   const remove = (key: number) => setRows((prev) => prev.filter((row) => row.key !== key));
 
   const valid = rows.filter((row) => row.fr.trim() && row.de.trim());
@@ -187,6 +231,11 @@ export function AddSet({ onSave, onClose }: Props) {
             nicht sicher.
           </p>
         )}
+        {checking > 0 && (
+          <p className="checking" role="status">
+            Ich prüfe noch, ob alle Wörter zusammenpassen …
+          </p>
+        )}
         {single && toCheck === 0 && (
           <p className="answer-hint" role="status">
             Diesmal fehlt die zweite Lesung. Schau bitte besonders genau hin.
@@ -209,7 +258,7 @@ export function AddSet({ onSave, onClose }: Props) {
           {rows.map((row, index) => (
             <li key={row.key} className={row.check ? "row check" : "row"}>
               <div className="row-fields">
-                {row.check && <span className="row-flag">Bitte prüfen</span>}
+                {row.check && <span className="row-flag">{row.reason ?? "Bitte prüfen"}</span>}
                 <input
                   className="row-fr"
                   type="text"
