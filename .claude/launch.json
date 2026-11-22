@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "vokabeltrainer",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "serve", "-l", "8777", "--single", "."],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "8777", "--strictPort"],
       "port": 8777
     }
   ]

@@ -1,0 +1,232 @@
+import { useEffect, useRef, useState } from "react";
+import { type Step, makeStep, targetsFor } from "@shared/session";
+import { getCard, introduce, rate } from "@shared/srs";
+import { isCorrect, norm } from "@shared/text";
+import type { CardState, Item, Progress } from "@shared/types";
+import { Icon } from "../components/Icon";
+import { speak } from "../lib/audio";
+import type { Settings } from "../lib/store";
+import type { SessionStats } from "./Done";
+
+interface Props {
+  steps: Step[];
+  itemsById: Map<string, Item>;
+  poolFor: (item: Item) => Item[];
+  progress: Progress;
+  today: number;
+  settings: Settings;
+  onProgress: (itemId: string, card: CardState, introduced: boolean) => void;
+  onDone: (stats: SessionStats) => void;
+  onClose: () => void;
+}
+
+const PROMPTS: Record<Step["kind"], string> = {
+  intro: "Was heißt das auf Deutsch?",
+  type: "Wie heißt das auf Französisch?",
+  listenChoice: "Hör zu. Was heißt das auf Deutsch?",
+  listenType: "Hör zu. Schreibe, was du hörst.",
+};
+
+export function Session(props: Props) {
+  const { itemsById, today, settings } = props;
+  const [queue, setQueue] = useState(props.steps);
+  const [pos, setPos] = useState(0);
+  const [typed, setTyped] = useState("");
+  const [choice, setChoice] = useState<string | null>(null);
+  const [result, setResult] = useState<{ correct: boolean } | null>(null);
+  const stats = useRef({ items: new Set<string>(), again: new Set<string>(), introduced: 0 });
+  const inputRef = useRef<HTMLInputElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+
+  const step = queue[pos]!;
+  const item = itemsById.get(step.itemId)!;
+  const pool = props.poolFor(item);
+  const hasChoices = step.kind === "intro" || step.kind === "listenChoice";
+  const hidesWord = step.kind === "listenChoice" || step.kind === "listenType";
+
+  // Nach dem Prüfen liegt der Fokus auf "Weiter". So geht es mit Enter weiter.
+  useEffect(() => {
+    if (result) nextRef.current?.focus();
+  }, [result]);
+
+  const say = () => speak(item.fr, "fr", settings.rate);
+
+  const check = (giveUp = false) => {
+    if (result) return;
+    let correct: boolean;
+    if (hasChoices) {
+      if (!giveUp && choice === null) return;
+      correct = !giveUp && choice === item.de;
+    } else {
+      if (!giveUp && !norm(typed)) {
+        inputRef.current?.focus();
+        return;
+      }
+      correct = !giveUp && isCorrect(typed, targetsFor(item, pool));
+    }
+
+    const card = getCard(props.progress, item.id, today);
+    const isIntro = step.kind === "intro";
+    // Eine neue Karte wird nur vorgestellt. Bewertet wird sie erst beim zweiten Mal.
+    const next = isIntro ? introduce(card, today) : rate(card, correct, today);
+    props.onProgress(item.id, next, isIntro && !card.seen);
+
+    stats.current.items.add(item.id);
+    if (isIntro && !card.seen) stats.current.introduced++;
+    if (!isIntro && !correct) stats.current.again.add(item.id);
+    if (isIntro || !correct) {
+      setQueue((q) => [...q, makeStep(item, next, pool, settings.listen, Math.random)]);
+    }
+
+    // Tastatur schliessen, sonst verdeckt sie die Rückmeldung.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (step.kind === "type") say();
+    setResult({ correct });
+  };
+
+  const advance = () => {
+    const nextStep = queue[pos + 1];
+    if (!nextStep) {
+      const s = stats.current;
+      props.onDone({ total: s.items.size, again: s.again.size, introduced: s.introduced });
+      return;
+    }
+    // Der Ton muss noch im Klick starten, nicht erst nach dem Neuzeichnen.
+    if (nextStep.kind !== "type") speak(itemsById.get(nextStep.itemId)!.fr, "fr", settings.rate);
+    setPos(pos + 1);
+    setTyped("");
+    setChoice(null);
+    setResult(null);
+  };
+
+  const done = pos + (result ? 1 : 0);
+  // Jede neue Karte kommt nach dem Vorstellen noch einmal. Das zählt der Balken gleich mit.
+  const total = queue.length + queue.slice(done).filter((s) => s.kind === "intro").length;
+
+  return (
+    <main className={`screen session ${result ? "answered" : ""}`}>
+      <header className="session-top">
+        <button className="icon-btn" aria-label="Üben beenden" onClick={props.onClose}>
+          <Icon name="x" size={26} stroke={2.6} />
+        </button>
+        <div className="bar tall" role="img" aria-label={`Aufgabe ${pos + 1} von ${total}`}>
+          <div className="bar-fill" style={{ width: `${(done / total) * 100}%` }} />
+        </div>
+      </header>
+
+      <div className="question">
+        {step.kind === "intro" && <span className="chip">Neu</span>}
+        <p className="prompt">{PROMPTS[step.kind]}</p>
+
+        {step.kind === "type" && <h1 className="word">{item.de}</h1>}
+
+        {step.kind === "intro" && (
+          <div className="word-row">
+            <button className="speak-btn" aria-label={`${item.fr} anhören`} onClick={say}>
+              <Icon name="speaker" size={26} stroke={2.2} />
+            </button>
+            <h1 className="word" lang="fr">
+              {item.fr}
+            </h1>
+          </div>
+        )}
+
+        {hidesWord && (
+          <button className="speak-btn big" aria-label="Noch einmal anhören" onClick={say}>
+            <Icon name="speaker" size={44} stroke={2} />
+          </button>
+        )}
+      </div>
+
+      {hasChoices ? (
+        <div className="options" role="group" aria-label="Antworten">
+          {step.options!.map((option) => {
+            const state = !result
+              ? choice === option
+                ? "selected"
+                : ""
+              : option === item.de
+                ? "right"
+                : choice === option
+                  ? "wrong"
+                  : "dim";
+            return (
+              <button
+                key={option}
+                className={`option ${state}`}
+                aria-pressed={choice === option}
+                onClick={() => !result && setChoice(option)}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <form
+          className="answer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            check();
+          }}
+        >
+          <label htmlFor="answer">Deine Antwort auf Französisch</label>
+          <input
+            key={pos}
+            id="answer"
+            ref={inputRef}
+            className={result ? (result.correct ? "right" : "wrong") : ""}
+            type="text"
+            lang="fr"
+            value={typed}
+            readOnly={result !== null}
+            onChange={(event) => setTyped(event.target.value)}
+            autoFocus
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            enterKeyHint="done"
+          />
+        </form>
+      )}
+
+      {!result && (
+        <footer className={`actions ${hasChoices ? "pinned" : ""}`}>
+          <button className={`btn primary ${hasChoices && choice === null ? "waiting" : ""}`} onClick={() => check()}>
+            Prüfen
+          </button>
+          <button className="text-btn center" onClick={() => check(true)}>
+            Weiß ich nicht
+          </button>
+        </footer>
+      )}
+
+      {result && (
+        <footer className={`sheet ${result.correct ? "good" : "bad"}`} aria-live="polite">
+          <div className="sheet-title">
+            <span className="sheet-mark">
+              <Icon name={result.correct ? "check" : "x"} size={20} stroke={3.2} />
+            </span>
+            <h2>{result.correct ? "Richtig" : step.kind === "intro" ? "Merk dir" : "Noch nicht"}</h2>
+          </div>
+          <div className="solution">
+            <div className="solution-text">
+              <div className="solution-fr" lang="fr">
+                {item.fr}
+              </div>
+              <div className="solution-de">{item.de}</div>
+              {item.n && <div className="solution-note">{item.n}</div>}
+            </div>
+            <button className="speak-btn small" aria-label={`${item.fr} anhören`} onClick={say}>
+              <Icon name="speaker" size={24} stroke={2.2} />
+            </button>
+          </div>
+          <button ref={nextRef} className="btn primary" onClick={advance}>
+            Weiter
+          </button>
+        </footer>
+      )}
+    </main>
+  );
+}

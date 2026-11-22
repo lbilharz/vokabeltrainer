@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Rendert fehlende Sprachdateien mit ElevenLabs.
 
-Liest alle Einträge (fr:"..." / de:"...") aus index.html. Für jeden Text ohne
-mp3 erzeugt das Skript audio/<lang>/<hash>.mp3 und schreibt audio/index.json neu.
+Liest alle Einträge (fr und de) aus src/data/*.json. Für jeden Text ohne
+mp3 erzeugt das Skript public/audio/<lang>/<hash>.mp3 und schreibt
+public/audio/index.json neu.
 
 Der Dateiname ist der FNV-1a-Hash des angezeigten Textes. Gesprochen wird
 say_text(), also ohne Platzhalter wie qn/qc. Beides MUSS zu fnv1a() und
-sayText() in index.html passen.
+sayText() in shared/text.ts passen.
 
 Key: aus ~/.secrets/elevenlabs (nur der Key), sonst ELEVENLABS_API_KEY in .env.
 
@@ -25,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-AUDIO = ROOT / "audio"
+AUDIO = ROOT / "public" / "audio"
 API = "https://api.elevenlabs.io/v1"
 MODEL = "eleven_multilingual_v2"
 FORMAT = "mp3_44100_128"  # wie die vorhandenen Dateien
@@ -77,11 +78,13 @@ def say_text(s, lang):
 
 
 def phrases():
-    html = (ROOT / "index.html").read_text()
+    # Alle Vokabel-Dateien in src/data/ lesen. Neue Dateien werden automatisch erfasst.
     found = {"fr": set(), "de": set()}
-    for lang in found:
-        for m in re.finditer(lang + r':"((?:[^"\\]|\\.)*)"', html):
-            found[lang].add(m.group(1).replace('\\"', '"'))
+    for f in sorted((ROOT / "src" / "data").glob("*.json")):
+        for item in json.loads(f.read_text(encoding="utf-8")):
+            for lang in found:
+                if item.get(lang):
+                    found[lang].add(item[lang])
     return found
 
 

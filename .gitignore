@@ -15,3 +15,10 @@ dist/
 
 # Secrets (z. B. ELEVENLABS_API_KEY)
 .env
+
+# Testfotos aus dem Schulbuch (Verlagsinhalt, nicht ins öffentliche Repo)
+tools/testfotos/
+
+# Abhängigkeiten und Build
+node_modules/
+dist/
