@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { drizzle } from "drizzle-orm/d1";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { mergeReadings, type MergedItem, type ReadItem } from "../shared/extract";
+import { mergeReadings, partialWords, type MergedItem, type ReadItem } from "../shared/extract";
 import * as schema from "./db/schema";
 import { readSession } from "./session";
 
@@ -11,7 +11,7 @@ export const extract = new Hono<{ Bindings: Env }>();
 
 /** Das Bildmodell. Nur hier ändern. */
 const GEMINI_MODEL = "gemini-3.8-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse`;
 
 /** Größtes Bild in Bytes. Als Base64 ist es ein Drittel länger. */
 const MAX_BODY_BYTES = 3 * 1024 * 1024;
@@ -94,6 +94,8 @@ class UpstreamError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    /** Wahr, wenn schon Text von Gemini angekommen war. Dann gibt es keinen zweiten Versuch. */
+    readonly started = false,
   ) {
     super(message);
   }
@@ -119,52 +121,76 @@ function geminiBody(mimeType: string, imageBase64: string): string {
         parts: [{ inline_data: { mime_type: mimeType, data: imageBase64 } }, { text: PROMPT }],
       },
     ],
-    generationConfig: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+      // Kurzes Nachdenken reicht zum Abschreiben einer Buchseite. Gemessen am 22.11.2026:
+      // 5 bis 6 Sekunden pro Foto statt 17 bis 37, bei gleicher Trefferquote.
+      thinkingConfig: { thinkingLevel: "low" },
+    },
   });
 }
 
 /** Diese Antworten sind meist nur vorübergehend. Dann lohnt ein zweiter Versuch. */
 const RETRY_STATUS = [429, 500, 502, 503, 504];
 
-/** Eine Lesung bei Gemini. Wirft UpstreamError. Der Key steht nie in einer Meldung. */
-async function callGemini(apiKey: string, body: string): Promise<ReadItem[]> {
-  const send = async () => {
-    try {
-      return await fetch(GEMINI_URL, {
-        method: "POST",
-        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-        body,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (error) {
-      throw new UpstreamError(`Keine Antwort von Gemini (${error instanceof Error ? error.name : "Fehler"}).`);
-    }
-  };
-
-  // Ein zweiter Versuch bei Überlast, Zeitüberschreitung oder Netzfehler.
+/** Ein einziger Versuch bei Gemini. `onText` bekommt nach jedem Stück den ganzen Text bis jetzt. */
+async function streamOnce(apiKey: string, body: string, onText?: (text: string) => void): Promise<ReadItem[]> {
   let response: Response;
   try {
-    response = await send();
-    if (RETRY_STATUS.includes(response.status)) {
-      await sleep(RETRY_DELAY_MS);
-      response = await send();
-    }
-  } catch {
-    await sleep(RETRY_DELAY_MS);
-    response = await send();
+    response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body,
+      // Die Frist gilt für den ganzen Strom, nicht nur für den Anfang.
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new UpstreamError(`Keine Antwort von Gemini (${error instanceof Error ? error.name : "Fehler"}).`);
   }
   if (!response.ok) {
     const detail = (await response.text().catch(() => "")).slice(0, 300);
     throw new UpstreamError(`Gemini HTTP ${response.status}: ${detail}`, response.status);
   }
+  if (!response.body) throw new UpstreamError("Gemini schickte keinen Strom.", response.status);
 
-  try {
-    const answer = answerSchema.parse(await response.json());
+  let text = "";
+  let started = false;
+  /** Eine Zeile des Stroms. Nur `data:`-Zeilen zählen. */
+  const handleLine = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const json = line.slice(5).trim();
+    if (!json) return;
+    const answer = answerSchema.parse(JSON.parse(json));
     const parts = answer.candidates?.[0]?.content?.parts ?? [];
-    const text = parts
+    const piece = parts
       .filter((part) => !part.thought)
       .map((part) => part.text ?? "")
       .join("");
+    if (!piece) return;
+    started = true;
+    text += piece;
+    onText?.(text);
+  };
+
+  try {
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buffer += value;
+      const lines = buffer.split("\n");
+      buffer = done ? "" : (lines.pop() ?? "");
+      for (const line of lines) handleLine(line.replace(/\r$/, ""));
+      if (done) break;
+    }
+    if (buffer) handleLine(buffer);
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "Fehler";
+    throw new UpstreamError(`Der Strom von Gemini brach ab (${name}).`, started ? response.status : undefined, started);
+  }
+
+  try {
     const reading = readingSchema.parse(JSON.parse(text));
     return reading.items.map((item) => ({
       c: item.c ?? null,
@@ -173,7 +199,26 @@ async function callGemini(apiKey: string, body: string): Promise<ReadItem[]> {
       n: item.n ?? null,
     }));
   } catch {
-    throw new UpstreamError("Die Antwort von Gemini war nicht lesbar.", response.status);
+    throw new UpstreamError("Die Antwort von Gemini war nicht lesbar.", response.status, started);
+  }
+}
+
+/**
+ * Eine Lesung bei Gemini. Wirft UpstreamError. Der Key steht nie in einer Meldung.
+ * Ein zweiter Versuch gibt es nur, solange noch kein Text angekommen ist
+ * (Netzfehler, Zeitüberschreitung oder ein vorübergehender Status).
+ */
+async function callGemini(apiKey: string, body: string, onText?: (text: string) => void): Promise<ReadItem[]> {
+  try {
+    return await streamOnce(apiKey, body, onText);
+  } catch (error) {
+    const retryable =
+      error instanceof UpstreamError &&
+      !error.started &&
+      (error.status === undefined || RETRY_STATUS.includes(error.status));
+    if (!retryable) throw error;
+    await sleep(RETRY_DELAY_MS);
+    return streamOnce(apiKey, body, onText);
   }
 }
 
@@ -248,24 +293,96 @@ extract.post("/extract", async (context) => {
   }
 
   const body = geminiBody(mimeType, imageBase64);
-  const [first, second] = await Promise.allSettled([callGemini(apiKey, body), callGemini(apiKey, body)]);
+  const wantsStream = (context.req.header("accept") ?? "").includes("application/x-ndjson");
 
-  for (const result of [first, second]) {
-    if (result.status === "rejected") console.error("Fotoerkennung:", String(result.reason));
+  if (!wantsStream) {
+    const result = await readPage(apiKey, body);
+    if (!result) return context.json({ error: PAGE_ERROR }, 502);
+    return context.json(result);
   }
 
-  let items: MergedItem[];
-  let readings: 1 | 2;
-  if (first.status === "fulfilled" && second.status === "fulfilled") {
-    items = mergeReadings(clean(first.value), clean(second.value));
-    readings = 2;
-  } else if (first.status === "fulfilled" || second.status === "fulfilled") {
-    const ok = first.status === "fulfilled" ? first.value : (second as PromiseFulfilledResult<ReadItem[]>).value;
-    items = clean(ok).map((item) => ({ ...item, check: false }));
-    readings = 1;
-  } else {
-    return context.json({ error: "Die Seite konnte nicht gelesen werden. Versuch es noch einmal." }, 502);
+  // Der Strom wird sofort zurückgegeben. Die Arbeit läuft weiter und schreibt Zeile für Zeile.
+  const { readable, writable } = new TransformStream<Uint8Array>();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+  let broken = false;
+  const emit = (event: object) => {
+    if (broken) return;
+    writer.write(encoder.encode(JSON.stringify(event) + "\n")).catch(() => {
+      broken = true; // Der Browser hat die Verbindung geschlossen.
+    });
+  };
+
+  const work = (async () => {
+    try {
+      emit({ type: "start" });
+      const result = await readPage(apiKey, body, emit);
+      emit(result ? { type: "done", ...result } : { type: "error", error: PAGE_ERROR });
+    } catch (error) {
+      console.error("Fotoerkennung:", String(error));
+      emit({ type: "error", error: PAGE_ERROR });
+    } finally {
+      await writer.close().catch(() => {});
+    }
+  })();
+  // Der Worker muss laufen, bis der Strom zu ist. Lokal gibt es nicht immer einen executionCtx.
+  try {
+    context.executionCtx.waitUntil(work);
+  } catch {
+    // Kein executionCtx: die Arbeit läuft trotzdem weiter.
   }
 
-  return context.json({ items: items.slice(0, MAX_ITEMS), readings });
+  return new Response(readable, {
+    status: 200,
+    headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+  });
 });
+
+const PAGE_ERROR = "Die Seite konnte nicht gelesen werden. Versuch es noch einmal.";
+
+type Settled = { ok: true; value: ReadItem[] } | { ok: false };
+
+/**
+ * Zwei Lesungen, zusammengeführt. null heißt: beide sind gescheitert.
+ * Mit `emit` kommen Ereignisse für die erste Lesung: `word` je fertigem Stichwort,
+ * `compare` sobald sie fertig ist, während die zweite noch läuft.
+ */
+async function readPage(
+  apiKey: string,
+  body: string,
+  emit?: (event: object) => void,
+): Promise<{ items: MergedItem[]; readings: 1 | 2 } | null> {
+  let secondSettled = false;
+  let sent = 0;
+  const onText = (text: string) => {
+    const words = partialWords(text);
+    for (; sent < words.length; sent++) emit?.({ type: "word", fr: words[sent], count: sent + 1 });
+  };
+  const settle = async (read: Promise<ReadItem[]>, onDone: () => void): Promise<Settled> => {
+    try {
+      return { ok: true, value: await read };
+    } catch (error) {
+      console.error("Fotoerkennung:", String(error));
+      return { ok: false };
+    } finally {
+      onDone();
+    }
+  };
+
+  const [first, second] = await Promise.all([
+    settle(callGemini(apiKey, body, emit ? onText : undefined), () => {
+      if (!secondSettled) emit?.({ type: "compare" });
+    }),
+    settle(callGemini(apiKey, body), () => {
+      secondSettled = true;
+    }),
+  ]);
+
+  if (first.ok && second.ok) {
+    return { items: mergeReadings(clean(first.value), clean(second.value)).slice(0, MAX_ITEMS), readings: 2 };
+  }
+  const only = first.ok ? first : second.ok ? second : null;
+  if (!only || !only.ok) return null;
+  const items = clean(only.value).map((item) => ({ ...item, check: false }));
+  return { items: items.slice(0, MAX_ITEMS), readings: 1 };
+}

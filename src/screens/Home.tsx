@@ -1,3 +1,4 @@
+import { type FormEvent, useState } from "react";
 import { type Station, buildStations, stationStatuses } from "@shared/path";
 import type { TodayPlan } from "@shared/session";
 import { getCard, isDue, isMastered } from "@shared/srs";
@@ -12,6 +13,7 @@ interface Props {
   /** true, solange der erste Abgleich läuft und noch nichts zu zeigen ist. */
   loading: boolean;
   onAddSet: () => void;
+  onRenameSet: (label: string) => void;
   progress: Progress;
   today: number;
   plan: TodayPlan;
@@ -32,6 +34,15 @@ function count(n: number, unit: [string, string]): string {
 
 export function Home(props: Props) {
   const { sets, active, progress, today, plan } = props;
+  /** null: der Name wird nur angezeigt. Sonst der Text im Eingabefeld. */
+  const [renaming, setRenaming] = useState<string | null>(null);
+
+  const rename = (event: FormEvent) => {
+    event.preventDefault();
+    const label = (renaming ?? "").trim();
+    if (label) props.onRenameSet(label);
+    setRenaming(null);
+  };
 
   if (!active) {
     return (
@@ -101,12 +112,40 @@ export function Home(props: Props) {
       </section>
 
       <section className="set-head">
-        <div className="set-title">
-          <h2>{active.label}</h2>
-          <span>
-            {mastered} von {total} sitzen
-          </span>
-        </div>
+        {renaming === null ? (
+          <div className="set-title">
+            <h2>
+              {active.label}
+              <button
+                className="icon-btn inline"
+                aria-label="Set umbenennen"
+                onClick={() => setRenaming(active.label)}
+              >
+                <Icon name="pencil" size={18} stroke={2.2} />
+              </button>
+            </h2>
+            <span>
+              {mastered} von {total} sitzen
+            </span>
+          </div>
+        ) : (
+          <form className="rename" onSubmit={rename}>
+            <label htmlFor="set-label" className="sr-only">
+              Name des Sets
+            </label>
+            <input
+              id="set-label"
+              type="text"
+              value={renaming}
+              maxLength={60}
+              autoFocus
+              onChange={(event) => setRenaming(event.target.value)}
+            />
+            <button className="btn quiet" type="submit">
+              Fertig
+            </button>
+          </form>
+        )}
         <div className="bar" role="img" aria-label={`${mastered} von ${total} sitzen`}>
           <div className="bar-fill" style={{ width: `${total ? (mastered / total) * 100 : 0}%` }} />
         </div>

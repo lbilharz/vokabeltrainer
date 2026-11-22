@@ -159,3 +159,24 @@ export const audioLog = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.day] })],
 );
+
+/**
+ * Web-Push-Abo eines Geräts für die tägliche Übungserinnerung.
+ *
+ * `hour` ist die Stunde in Berlin. `lastSentDay` ist der Berliner Kalendertag
+ * (als Tagesnummer), an dem zuletzt geprüft oder gesendet wurde.
+ */
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    hour: integer("hour").notNull(),
+    lastSentDay: integer("last_sent_day"),
+    createdAt: createdAt(),
+  },
+  (table) => [index("push_subscriptions_hour_idx").on(table.hour)],
+);

@@ -1295,3 +1295,167 @@ button.station-row:active .station-dot {
 .install-hint strong {
   color: var(--ink);
 }
+
+.switch-row input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.select-row select {
+  min-height: 48px;
+  padding: 0 14px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.set-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.icon-btn.inline {
+  margin: -10px 0;
+}
+
+.rename {
+  display: flex;
+  gap: 8px;
+}
+
+.rename input {
+  flex-grow: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 2px solid var(--rose);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.rename input:focus {
+  outline: none;
+}
+
+.rename .btn {
+  width: auto;
+  flex-shrink: 0;
+}
+
+a.btn {
+  text-decoration: none;
+}
+
+.help {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---------- Fortschritt beim Lesen ---------- */
+
+.screen.reading {
+  align-items: stretch;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.screen.reading h1 {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.screen.reading .reading-mark {
+  width: 88px;
+  height: 88px;
+  border-radius: 44px;
+}
+
+.reading-count {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--green-dark);
+}
+
+.reading-words {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Feste Höhe für fünf Zeilen. So springt die Seite nicht, wenn Wörter dazukommen. */
+  min-height: 188px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reading-words li {
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--page);
+  font-size: 17px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: word-in 0.25s ease-out;
+}
+
+.reading-words li:last-child {
+  background: var(--green-50);
+  color: var(--green-dark);
+}
+
+@keyframes word-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-words li {
+    animation: none;
+  }
+}
+
+.bar.upload {
+  flex-grow: 0;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.bar.upload .bar-fill {
+  background: var(--rose);
+  transition: width 0.15s linear;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SyncStatus } from "../Trainer";
 import { type Device, type User, addThisDevice, listDevices, logout, removeDevice } from "../lib/account";
+import { DEFAULT_HOUR, type PushState, disablePush, enablePush, readPushState } from "../lib/push";
 import type { Settings as SettingsData } from "../lib/store";
 import { Icon } from "./Icon";
 
@@ -33,6 +34,29 @@ export function Settings(props: Props) {
   const { user, settings, setLabel, onChange, onClose } = props;
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [push, setPush] = useState<PushState | null>(null);
+  const [pushNote, setPushNote] = useState<string | null>(null);
+  const [hour, setHour] = useState(DEFAULT_HOUR);
+
+  useEffect(() => {
+    void readPushState().then((state) => {
+      setPush(state);
+      setHour(state.hour);
+    });
+  }, []);
+
+  /** Schaltet die Erinnerung ein, aus oder auf eine andere Stunde. */
+  const changePush = async (enabled: boolean, hour: number) => {
+    setPushNote(null);
+    try {
+      if (enabled) await enablePush(hour);
+      else await disablePush();
+      setPush(await readPushState());
+    } catch (error) {
+      setPushNote(error instanceof Error && error.message ? error.message : "Das hat nicht geklappt.");
+      setPush(await readPushState());
+    }
+  };
   // Vom Home-Bildschirm gestartet läuft die App ohne Adressleiste. Dann braucht es den Hinweis nicht.
   const installed =
     window.matchMedia("(display-mode: standalone)").matches ||
@@ -104,6 +128,58 @@ export function Settings(props: Props) {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="field">
+          <strong>Tägliche Erinnerung</strong>
+          <label className="select-row">
+            <span>Uhrzeit</span>
+            <select
+              value={hour}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                setHour(next);
+                // Läuft die Mitteilung schon, gilt die neue Uhrzeit sofort.
+                if (push?.enabled) void changePush(true, next);
+              }}
+            >
+              {Array.from({ length: 15 }, (_, i) => i + 7).map((h) => (
+                <option key={h} value={h}>
+                  {h} Uhr
+                </option>
+              ))}
+            </select>
+          </label>
+          {push?.configured && (
+            <label className="switch-row">
+              <span>
+                <strong>Mitteilung von der App</strong>
+                <small>
+                  {push.supported
+                    ? "Sie kommt nur, wenn noch Karten warten."
+                    : "Das geht erst, wenn die App auf dem Home-Bildschirm liegt."}
+                </small>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={push.enabled}
+                disabled={!push.supported}
+                onChange={(event) => void changePush(event.target.checked, hour)}
+              />
+            </label>
+          )}
+          {pushNote && (
+            <p className="field-error" role="alert">
+              {pushNote}
+            </p>
+          )}
+          <a className="btn quiet" href={`/api/reminder.ics?hour=${hour}`}>
+            In den Kalender eintragen
+          </a>
+          <small className="help">
+            Der Kalender erinnert jeden Tag, auch wenn du schon geübt hast. Dafür bleibt alles auf deinem Gerät.
+          </small>
         </div>
 
         {!installed && (

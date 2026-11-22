@@ -39,6 +39,12 @@
     }
   ],
 
+  // Stündlich. Der Worker prüft selbst die Ortszeit in Berlin und erinnert zur gewählten Stunde.
+  // Crons laufen in UTC. So muss niemand zweimal im Jahr an die Sommerzeit denken.
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+
   "observability": {
     "enabled": true
   }

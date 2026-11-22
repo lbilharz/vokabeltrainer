@@ -19,5 +19,5 @@
     "skipLibCheck": true
   },
   // Aus shared/ importiert der Worker nur die Zusammenführung der Fotoerkennung samt ihren Abhängigkeiten.
-  "include": ["worker", "shared/extract.ts", "shared/text.ts", "shared/types.ts"]
+  "include": ["worker", "shared/extract.ts", "shared/text.ts", "shared/types.ts", "shared/reminder.ts"]
 }

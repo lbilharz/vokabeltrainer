@@ -1,3 +1,4 @@
 SIGNUP_CODE = "irgendein-wort"
 GEMINI_API_KEY = "dein-gemini-key"
 ELEVENLABS_API_KEY = "dein-elevenlabs-key"
+VAPID_JWK = '{"kty":"EC","crv":"P-256","x":"...","y":"...","d":"..."}'

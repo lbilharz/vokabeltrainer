@@ -172,8 +172,33 @@ export interface ExtractResponse {
   readings: 1 | 2;
 }
 
-/** Schickt ein Foto zum Lesen. Der Server speichert das Bild nicht. */
-export async function extractPhoto(photo: Blob): Promise<ExtractResponse> {
+/** Was während des Lesens passiert. Damit zeigt die App echten Fortschritt. */
+export type ExtractProgress =
+  /** Das Foto wird gesendet. `fraction` läuft von 0 bis 1. */
+  | { type: "sending"; fraction: number }
+  /** Der Server hat das Foto und fragt Gemini. */
+  | { type: "start" }
+  /** Ein weiteres Wort der ersten Lesung ist da. */
+  | { type: "word"; fr: string; count: number }
+  /** Die erste Lesung ist fertig, die zweite läuft noch. */
+  | { type: "compare" };
+
+type ExtractLine =
+  | Exclude<ExtractProgress, { type: "sending" }>
+  | ({ type: "done" } & ExtractResponse)
+  | { type: "error"; error: string };
+
+/**
+ * Schickt ein Foto zum Lesen. Der Server speichert das Bild nicht.
+ *
+ * Die Antwort kommt Zeile für Zeile. So erscheinen die Wörter, während Gemini noch liest.
+ * Hier arbeitet XMLHttpRequest statt fetch: nur damit meldet der Browser,
+ * wie viel vom Foto schon gesendet ist.
+ */
+export async function extractPhoto(
+  photo: Blob,
+  onProgress: (event: ExtractProgress) => void = () => {},
+): Promise<ExtractResponse> {
   // Das Bild geht als Base64 zum Server. Der Browser wandelt es um, das spart dem Server Rechenzeit.
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -181,14 +206,78 @@ export async function extractPhoto(photo: Blob): Promise<ExtractResponse> {
     reader.onerror = () => reject(new Error("Das Bild konnte nicht gelesen werden."));
     reader.readAsDataURL(photo);
   });
-  const response = await fetch("/api/extract", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ mimeType: photo.type || "image/jpeg", data: dataUrl.slice(dataUrl.indexOf(",") + 1) }),
+  const body = JSON.stringify({ mimeType: photo.type || "image/jpeg", data: dataUrl.slice(dataUrl.indexOf(",") + 1) });
+  const fallback = "Die Seite konnte nicht gelesen werden.";
+
+  return new Promise<ExtractResponse>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/extract");
+    xhr.setRequestHeader("content-type", "application/json");
+    xhr.setRequestHeader("accept", "application/x-ndjson");
+
+    onProgress({ type: "sending", fraction: 0 });
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress({ type: "sending", fraction: event.loaded / event.total });
+    };
+    xhr.upload.onload = () => onProgress({ type: "sending", fraction: 1 });
+
+    let read = 0;
+    let settled = false;
+    const finish = (result: ExtractResponse | Error) => {
+      if (settled) return;
+      settled = true;
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
+
+    /** Verarbeitet alle Zeilen, die seit dem letzten Mal vollständig angekommen sind. */
+    const drain = () => {
+      const text = xhr.responseText;
+      for (;;) {
+        const end = text.indexOf("\n", read);
+        if (end === -1) break;
+        const line = text.slice(read, end).trim();
+        read = end + 1;
+        if (!line) continue;
+        let event: ExtractLine;
+        try {
+          event = JSON.parse(line) as ExtractLine;
+        } catch {
+          continue;
+        }
+        if (event.type === "done") finish({ items: event.items, readings: event.readings });
+        else if (event.type === "error") finish(new ApiError(event.error || fallback, 502));
+        else onProgress(event);
+      }
+    };
+
+    const streamed = () => (xhr.getResponseHeader("content-type") ?? "").includes("ndjson");
+    xhr.onprogress = () => {
+      if (xhr.status === 200 && streamed()) drain();
+    };
+    xhr.onload = () => {
+      if (xhr.status === 200 && streamed()) {
+        drain();
+        // Die Verbindung ist zu Ende, aber das Ergebnis kam nie.
+        finish(new ApiError(`${fallback} Versuch es noch einmal.`, 502));
+        return;
+      }
+      // Fehler vor dem Lesen und Antworten eines älteren Servers kommen als ein JSON-Block.
+      let payload: (ExtractResponse & { error?: string }) | null = null;
+      try {
+        payload = JSON.parse(xhr.responseText) as ExtractResponse & { error?: string };
+      } catch {
+        // Keine lesbare Antwort.
+      }
+      if (xhr.status < 200 || xhr.status >= 300 || !payload) {
+        finish(new ApiError(payload?.error ?? fallback, xhr.status));
+      } else {
+        finish(payload);
+      }
+    };
+    xhr.onerror = () => finish(new Error("Keine Verbindung. Versuch es noch einmal."));
+    xhr.ontimeout = () => finish(new ApiError(`${fallback} Versuch es noch einmal.`, 504));
+    xhr.timeout = 150_000;
+    xhr.send(body);
   });
-  const payload = (await response.json().catch(() => null)) as (ExtractResponse & { error?: string }) | null;
-  if (!response.ok || !payload) {
-    throw new ApiError(payload?.error ?? "Die Seite konnte nicht gelesen werden.", response.status);
-  }
-  return payload;
 }

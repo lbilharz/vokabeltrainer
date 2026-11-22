@@ -16,6 +16,7 @@ Die Rohantworten landen in tools/testfotos/ergebnis-<modell>.json.
 import base64
 import difflib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -102,6 +103,9 @@ def ask(model, key, image):
         ]}],
         "generationConfig": {"responseMimeType": "application/json", "responseSchema": SCHEMA},
     }
+    # Zum Vergleichen: THINKING=low lässt das Modell kürzer nachdenken.
+    if os.environ.get("THINKING"):
+        body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": os.environ["THINKING"]}
     req = urllib.request.Request(f"{API}/{model}:generateContent", data=json.dumps(body).encode(),
                                  headers={"x-goog-api-key": key, "Content-Type": "application/json"})
     start = time.time()

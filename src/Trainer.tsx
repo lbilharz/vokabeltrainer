@@ -263,6 +263,26 @@ export function Trainer({ user, onSignedOut }: Props) {
     window.setTimeout(() => void syncNow(), 0);
   };
 
+  /** Benennt das aktive Set um. Der Lernstand bleibt, er hängt an den Wörtern. */
+  const renameActive = (label: string) => {
+    if (!active) return;
+    const now = Date.now();
+    setData((prev) => {
+      const doc = prev.sets[active.id];
+      if (!doc?.data || doc.data.label === label) return prev;
+      const old = doc.data.label;
+      // Ältere Sets trugen den Set-Namen als Abschnitt an jedem Eintrag ohne Überschrift.
+      // Der fällt hier weg, sonst hiessen die Stationen weiter wie der alte Name.
+      const items = doc.data.items.map((item) => (item.c === old ? { ...item, c: "" } : item));
+      return {
+        ...prev,
+        sets: { ...prev.sets, [active.id]: { ...doc, t: now, data: { ...doc.data, label, items } } },
+        setsDirty: [...new Set([...prev.setsDirty, active.id])],
+      };
+    });
+    window.setTimeout(() => void syncNow(), 0);
+  };
+
   /** Entfernt das aktive Set. Der leere Eintrag bleibt, damit die Löschung mitwandert. */
   const deleteActive = () => {
     if (!active) return;
@@ -307,6 +327,7 @@ export function Trainer({ user, onSignedOut }: Props) {
           dueTomorrow={countDueBy(sets, data.cards, today + 1)}
           loading={sets.length === 0 && data.sync.since === 0 && syncStatus === "running"}
           onAddSet={() => open({ name: "add" }, "/neu")}
+          onRenameSet={renameActive}
           onStartToday={startToday}
           onStartStation={startStation}
           onSwitchSet={(id) => setMeta(() => ({ activeSet: id }))}

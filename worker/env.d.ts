@@ -28,6 +28,13 @@ declare global {
      * Fehlt er, rendert /api/audio/ensure nichts und meldet `stopped: "unconfigured"`.
      */
     ELEVENLABS_API_KEY?: string;
+    /**
+     * Privater Schlüssel für Web Push (VAPID), ein JWK als JSON-Text (P-256).
+     *
+     * Gesetzt mit `wrangler secret put VAPID_JWK`, lokal über `.dev.vars`.
+     * Fehlt er, antwortet /api/push/key mit 503 und der Cron sendet nichts.
+     */
+    VAPID_JWK?: string;
   }
 }
 

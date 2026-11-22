@@ -29,7 +29,7 @@ export function WordList({ set, progress, rate, onBack }: Props) {
       </header>
       {groups.map((group) => (
         <section key={group.c} className="list-group">
-          <h2>{group.c}</h2>
+          <h2>{group.c || set.label}</h2>
           <ul>
             {group.items.map((item) => {
               const card = getCard(progress, item.id, 0);

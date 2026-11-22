@@ -53,6 +53,36 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(networkFirst(request));
 });
 
+/*
+ * Die tägliche Erinnerung.
+ * Der Server schickt nur ein leeres Signal. Der Text steht hier fest.
+ * So erfahren Apple und Google nichts über das Kind oder seinen Lernstand.
+ */
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    self.registration.showNotification("Zeit für deine Vokabeln", {
+      body: "Ein paar Karten warten auf dich.",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      // Eine neue Erinnerung ersetzt die alte. Es stapelt sich nichts.
+      tag: "taeglich",
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if ("focus" in client) return client.focus();
+      }
+      return self.clients.openWindow("/");
+    })(),
+  );
+});
+
 /** Jede Adresse der App liefert dieselbe Seite. Sie liegt unter "/" im Cache. */
 async function page(request) {
   const cache = await caches.open(SHELL);

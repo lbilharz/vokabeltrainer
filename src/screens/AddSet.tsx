@@ -15,6 +15,21 @@ interface Row extends ExtractedItem {
 
 type Phase = "start" | "reading" | "review";
 
+/** Was die App während des Lesens gerade weiss. */
+interface Live {
+  stage: "sending" | "looking" | "reading" | "comparing";
+  /** Anteil des Fotos, der schon gesendet ist. 0 bis 1. */
+  sent: number;
+  words: string[];
+}
+
+const STAGE_TEXT: Record<Live["stage"], string> = {
+  sending: "Das Foto wird gesendet …",
+  looking: "Das Foto ist angekommen. Ich schaue mir die Seite an …",
+  reading: "Ich lese die Wörter …",
+  comparing: "Ich lese zur Sicherheit ein zweites Mal und vergleiche …",
+};
+
 const MAX_AT_ONCE = 6;
 
 /** Neue Vokabeln: Foto aufnehmen, lesen lassen, prüfen, übernehmen. */
@@ -26,6 +41,7 @@ export function AddSet({ onSave, onClose }: Props) {
   const [single, setSingle] = useState(false);
   /** Bei mehreren Bildern auf einmal: welches gerade gelesen wird. */
   const [progress, setProgress] = useState({ current: 1, total: 1 });
+  const [live, setLive] = useState<Live>({ stage: "sending", sent: 0, words: [] });
   const nextKey = useRef(0);
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -43,8 +59,20 @@ export function AddSet({ onSave, onClose }: Props) {
     // Eine Seite nach der anderen. So bleibt die Reihenfolge der Bilder erhalten.
     for (const [index, file] of files.entries()) {
       setProgress({ current: index + 1, total: files.length });
+      setLive({ stage: "sending", sent: 0, words: [] });
       try {
-        const result = await extractPhoto(await shrinkPhoto(file));
+        const result = await extractPhoto(await shrinkPhoto(file), (event) => {
+          setLive((prev) => {
+            if (event.type === "sending") {
+              // Ist alles gesendet, wartet die App auf die Bestätigung des Servers.
+              return prev.stage === "sending" ? { ...prev, sent: event.fraction } : prev;
+            }
+            if (event.type === "start") return { ...prev, stage: "looking", sent: 1 };
+            if (event.type === "word") return { ...prev, stage: "reading", words: [...prev.words, event.fr] };
+            if (event.type === "compare") return { ...prev, stage: "comparing" };
+            return prev;
+          });
+        });
         if (result.items.length === 0) {
           throw new Error("Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.");
         }
@@ -76,7 +104,8 @@ export function AddSet({ onSave, onClose }: Props) {
     onSave(
       name,
       valid.map((row) => ({
-        c: row.c?.trim() || name,
+        // Ohne Überschrift bleibt der Abschnitt leer. Der Name des Sets steht nur am Set.
+        c: row.c?.trim() || "",
         fr: row.fr.trim(),
         de: row.de.trim(),
         ...(row.n?.trim() ? { n: row.n.trim() } : {}),
@@ -92,17 +121,41 @@ export function AddSet({ onSave, onClose }: Props) {
   );
 
   if (phase === "reading") {
+    const found = live.words.length;
     return (
-      <main className="screen center" aria-busy="true">
+      <main className="screen reading" aria-busy="true">
         <div className="reading-mark" aria-hidden="true">
-          <Icon name="list" size={48} stroke={2} />
+          <Icon name="list" size={40} stroke={2} />
         </div>
         <h1>{progress.total > 1 ? `Ich lese Seite ${progress.current} von ${progress.total}` : "Ich lese die Seite"}</h1>
-        <p className="lead">
-          {progress.total > 1
-            ? "Jede Seite dauert etwa eine halbe Minute. Ich lese sie zur Sicherheit zweimal."
-            : "Das dauert etwa eine halbe Minute. Ich lese sie zur Sicherheit zweimal."}
+        <p className="lead" role="status">
+          {STAGE_TEXT[live.stage]}
         </p>
+        {live.stage === "sending" && (
+          <div
+            className="bar tall upload"
+            role="progressbar"
+            aria-label="Foto wird gesendet"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(live.sent * 100)}
+          >
+            <div className="bar-fill" style={{ width: `${Math.round(live.sent * 100)}%` }} />
+          </div>
+        )}
+        {found > 0 && (
+          <>
+            <p className="reading-count">{found === 1 ? "1 Wort gefunden" : `${found} Wörter gefunden`}</p>
+            {/* Die letzten Wörter, das neueste unten. Reine Zier, der Zähler sagt dasselbe. */}
+            <ul className="reading-words" aria-hidden="true">
+              {live.words.slice(-5).map((word, index, shown) => (
+                <li key={`${found - shown.length + index}`} lang="fr">
+                  {word}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </main>
     );
   }

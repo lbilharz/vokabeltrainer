@@ -28,7 +28,8 @@ export function buildStations(items: Item[], size = 8): Station[] {
       start += len;
       stations.push({
         id: `${chunk[0].setId}:${stations.length}`,
-        label: parts === 1 ? c : `${c}, Teil ${k + 1}`,
+        // Ohne Überschrift auf der Buchseite heisst die Station einfach "Teil 1".
+        label: c === "" ? `Teil ${k + 1}` : parts === 1 ? c : `${c}, Teil ${k + 1}`,
         itemIds: chunk.map((i) => i.id),
       });
     }

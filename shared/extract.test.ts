@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeReadings, type ReadItem } from "./extract";
+import { mergeReadings, partialWords, type ReadItem } from "./extract";
 
 const it_ = (fr: string, de: string, c: string | null = null, n: string | null = null): ReadItem => ({
   c,
@@ -119,5 +119,81 @@ describe("mergeReadings", () => {
       "la fin",
     ]);
     expect(r.map((i) => i.check)).toEqual([false, true, true, true, false]);
+  });
+});
+
+describe("partialWords", () => {
+  const full = JSON.stringify({
+    items: [
+      { fr: "le café", de: "das Café", n: null, c: "Volet 1" },
+      { fr: 'dire "oui"', de: "sagen", n: "a\\b", c: null },
+      { fr: "l'été / école", de: "Sommer", n: "→ rêver · \n Zeile", c: "Volet 2" },
+      { fr: "ça va ?", de: "wie geht's", n: null, c: null },
+    ],
+  });
+
+  it("leerer Text gibt nichts zurück", () => {
+    expect(partialWords("")).toEqual([]);
+  });
+
+  it("Text mitten in einem Schlüssel", () => {
+    expect(partialWords('{"items":[{"f')).toEqual([]);
+    expect(partialWords('{"items":[{"fr"')).toEqual([]);
+    expect(partialWords('{"items":[{"fr":')).toEqual([]);
+  });
+
+  it("Text mitten in einem Wert gibt das Wort noch nicht zurück", () => {
+    expect(partialWords('{"items":[{"fr":"le caf')).toEqual([]);
+    expect(partialWords('{"items":[{"fr": "le café","de":"das Ca')).toEqual(["le café"]);
+  });
+
+  it("Text mitten in einer Escape-Folge", () => {
+    expect(partialWords('{"items":[{"fr":"a\\')).toEqual([]);
+    expect(partialWords('{"items":[{"fr":"caf\\u00e')).toEqual([]);
+    expect(partialWords('{"items":[{"fr":"caf\\u00e9"')).toEqual(["café"]);
+  });
+
+  it("ein Wert mit maskiertem Anführungszeichen", () => {
+    expect(partialWords('{"items":[{"fr":"dire \\"oui\\" ici","de":"x"}')).toEqual(['dire "oui" ici']);
+    expect(partialWords('{"items":[{"fr":"dire \\"oui')).toEqual([]);
+  });
+
+  it("entmaskiert \\\\, \\/ und \\n", () => {
+    expect(partialWords('{"fr":"a\\\\b\\/c\\nd"}')).toEqual(["a\\b/c\nd"]);
+  });
+
+  it("ein é als Escape", () => {
+    expect(partialWords('{"fr":"\\u00e9t\\u00e9"}')).toEqual(["été"]);
+  });
+
+  it("mehrere Einträge in Reihenfolge", () => {
+    expect(partialWords(full)).toEqual(["le café", 'dire "oui"', "l'été / école", "ça va ?"]);
+  });
+
+  it("ein Text in einem anderen Wert zählt nicht als Schlüssel", () => {
+    expect(partialWords('{"items":[{"de":"fr","fr":"un"}]}')).toEqual(["un"]);
+    expect(partialWords('{"items":[{"n":"\\"fr\\": \\"x\\"","fr":"deux"}]}')).toEqual(["deux"]);
+  });
+
+  it("wirft nie, auch bei Unsinn", () => {
+    for (const text of ['"', '\\', '"\\u', '"fr"::"', '{"fr":"\\uZZZZ"}', "\u0000", '"fr":"x"']) {
+      expect(() => partialWords(text)).not.toThrow();
+    }
+  });
+
+  it("jedes Präfix liefert ein Präfix des Ergebnisses für den ganzen Text", () => {
+    const all = partialWords(full);
+    const escaped = JSON.stringify(JSON.parse(full), null, 1).replace(/é/g, "\\u00e9");
+    const allEscaped = partialWords(escaped);
+    for (const [doc, expected] of [
+      [full, all],
+      [escaped, allEscaped],
+    ] as const) {
+      for (let i = 0; i <= doc.length; i++) {
+        const part = partialWords(doc.slice(0, i));
+        expect(part).toEqual(expected.slice(0, part.length));
+      }
+    }
+    expect(allEscaped).toEqual(all);
   });
 });

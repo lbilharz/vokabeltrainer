@@ -70,3 +70,67 @@ export function mergeReadings(a: ReadItem[], b: ReadItem[]): MergedItem[] {
   }
   return result;
 }
+
+/** Liest einen JSON-String ab Position `start` (dort steht das öffnende Anführungszeichen). */
+function readJsonString(text: string, start: number): { value: string; end: number } | null {
+  let value = "";
+  let i = start + 1;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === '"') return { value, end: i + 1 };
+    if (ch !== "\\") {
+      value += ch;
+      i++;
+      continue;
+    }
+    const next = text[i + 1];
+    if (next === undefined) return null; // Escape ist noch nicht ganz da.
+    if (next === "u") {
+      const hex = text.slice(i + 2, i + 6);
+      if (hex.length < 4) return null; // \uXXXX ist noch nicht ganz da.
+      const code = /^[0-9a-fA-F]{4}$/.test(hex) ? parseInt(hex, 16) : 0xfffd;
+      value += String.fromCharCode(code);
+      i += 6;
+      continue;
+    }
+    const simple: Record<string, string> = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f" };
+    value += simple[next] ?? next; // \" \\ \/ und alles Unbekannte bleibt das Zeichen selbst.
+    i += 2;
+  }
+  return null;
+}
+
+/** Zieht die schon vollständig angekommenen französischen Stichwörter aus einem angefangenen JSON-Text. */
+export function partialWords(text: string): string[] {
+  const words: string[] = [];
+  try {
+    const skipSpace = (from: number) => {
+      let i = from;
+      while (i < text.length && /\s/.test(text[i]!)) i++;
+      return i;
+    };
+    let pos = 0;
+    while (pos < text.length) {
+      if (text[pos] !== '"') {
+        pos++;
+        continue;
+      }
+      // Jeder String wird ganz gelesen. So hält ein Wert nie als Schlüssel her.
+      const token = readJsonString(text, pos);
+      if (!token) break;
+      pos = token.end;
+      const colon = skipSpace(pos);
+      if (text[colon] !== ":") continue;
+      if (token.value !== "fr") continue;
+      const open = skipSpace(colon + 1);
+      if (text[open] !== '"') continue;
+      const word = readJsonString(text, open);
+      if (!word) break;
+      words.push(word.value);
+      pos = word.end;
+    }
+  } catch {
+    // Nie werfen. Was schon gefunden ist, bleibt gültig.
+  }
+  return words;
+}

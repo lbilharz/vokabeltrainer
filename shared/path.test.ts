@@ -90,3 +90,17 @@ describe("Daten", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+describe("buildStations ohne Überschrift", () => {
+  it("nennt Stationen ohne Abschnitt Teil 1, Teil 2", () => {
+    const items: Item[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `x:${i}`,
+      setId: "x",
+      c: "",
+      fr: `mot ${i}`,
+      de: `Wort ${i}`,
+    }));
+    expect(buildStations(items).map((station) => station.label)).toEqual(["Teil 1", "Teil 2"]);
+    expect(buildStations(items.slice(0, 3)).map((station) => station.label)).toEqual(["Teil 1"]);
+  });
+});
