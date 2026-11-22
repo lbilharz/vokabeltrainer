@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
+import { audio } from "./audio";
 import { auth } from "./auth";
 import { extract } from "./extract";
 import { sync } from "./sync";
@@ -9,6 +10,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.route("/api", sync);
 app.route("/api", extract);
+app.route("/api", audio);
 app.route("/api/auth", auth);
 
 app.onError((error, context) => {

@@ -1,28 +1,58 @@
 import { fnv1a, sayText } from "@shared/text";
 import type { Lang } from "@shared/types";
+import { apiPost } from "./api";
 
 /**
  * Sprachausgabe.
  *
- * Für fast alle Texte gibt es eine fertige Aufnahme unter /audio/<lang>/<hash>.mp3.
- * Die Liste /audio/index.json sagt sofort, ob eine Datei existiert. Das ist wichtig,
- * weil Safari die Stimme des Geräts nur direkt in einem Klick erlaubt und nicht
- * erst nach einem fehlgeschlagenen Laden.
+ * Es gibt zwei Quellen für Aufnahmen:
+ * - mitgelieferte Dateien unter /audio/<lang>/<hash>.mp3, gelistet in /audio/index.json,
+ * - Aufnahmen für fotografierte Wörter unter /api/audio/fr/<hash>.mp3.
+ *
+ * Die App muss sofort wissen, ob es eine Aufnahme gibt. Safari erlaubt die Stimme
+ * des Geräts nur direkt in einem Klick und nicht erst nach einem fehlgeschlagenen Laden.
+ * Deshalb führt sie beide Listen im Speicher.
  */
 
 const BASE = "/audio/";
-let keys = new Set<string>();
+const REMOTE_BASE = "/api/audio/fr/";
+const REMOTE_KEY = "travok_audio_fr";
+
+let bundled = new Set<string>();
 let current: HTMLAudioElement | null = null;
 
-export function loadAudioIndex(): void {
-  fetch(BASE + "index.json")
+function loadRemote(): Set<string> {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(REMOTE_KEY) ?? "[]");
+    return new Set(Array.isArray(list) ? (list as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Kennungen der Aufnahmen, die der Server schon hat. Kein Geheimnis, gilt für alle Konten. */
+const remote = loadRemote();
+
+function saveRemote(): void {
+  try {
+    localStorage.setItem(REMOTE_KEY, JSON.stringify([...remote]));
+  } catch {
+    // Ohne Speicher fragt die App beim nächsten Start einfach noch einmal nach.
+  }
+}
+
+let indexReady: Promise<void> | null = null;
+
+export function loadAudioIndex(): Promise<void> {
+  indexReady ??= fetch(BASE + "index.json")
     .then((r) => (r.ok ? r.json() : []))
     .then((list: unknown) => {
-      if (Array.isArray(list)) keys = new Set(list as string[]);
+      if (Array.isArray(list)) bundled = new Set(list as string[]);
     })
     .catch(() => {
       // Ohne Liste spricht die Stimme des Geräts.
     });
+  return indexReady;
 }
 
 function speakWithDevice(text: string, lang: Lang, rate: number): void {
@@ -42,11 +72,16 @@ export function speak(text: string, lang: Lang, baseRate: number): void {
   // Deutsch läuft einen Tick schneller als Französisch.
   const rate = lang === "fr" ? baseRate : Math.min(baseRate + 0.15, 1.3);
   const hash = fnv1a(text);
-  if (!keys.has(`${lang}/${hash}`)) {
+  const url = bundled.has(`${lang}/${hash}`)
+    ? `${BASE}${lang}/${hash}.mp3`
+    : lang === "fr" && remote.has(hash)
+      ? `${REMOTE_BASE}${hash}.mp3`
+      : null;
+  if (!url) {
     speakWithDevice(text, lang, rate);
     return;
   }
-  const audio = new Audio(`${BASE}${lang}/${hash}.mp3`);
+  const audio = new Audio(url);
   audio.preservesPitch = true;
   audio.playbackRate = rate;
   current = audio;
@@ -67,4 +102,70 @@ export function stop(): void {
     current = null;
   }
   if ("speechSynthesis" in window) speechSynthesis.cancel();
+}
+
+interface EnsureResponse {
+  ready: string[];
+  pending: string[];
+  stopped?: "limit" | "unconfigured" | "failed";
+}
+
+const BATCH = 10;
+let ensuring = false;
+let queued: string[] | null = null;
+/** Texte ohne sprechbaren Inhalt. Für die fragt die App in dieser Sitzung nicht noch einmal. */
+const skipped = new Set<string>();
+/** Nach einem "geht gerade nicht" vom Server wartet die App bis zu diesem Zeitpunkt. */
+let pausedUntil = 0;
+const PAUSE_MS = 5 * 60_000;
+
+/**
+ * Sorgt im Hintergrund dafür, dass es für alle französischen Texte eine Aufnahme gibt.
+ *
+ * Der Server prüft, was schon da ist, und lässt pro Aufruf nur wenige neue sprechen.
+ * Jedes Wort wird einzeln aufgenommen. Bis eine Aufnahme fertig ist, spricht das Gerät.
+ * Fehler bleiben still: beim nächsten Start geht es einfach weiter.
+ */
+export async function ensureAudio(texts: string[]): Promise<void> {
+  if (ensuring) {
+    // Der laufende Durchgang nimmt die neue Liste danach auf.
+    queued = texts;
+    return;
+  }
+  if (Date.now() < pausedUntil) return;
+  ensuring = true;
+  try {
+    await loadAudioIndex();
+    let todo = [...new Set(texts)].filter((text) => {
+      const hash = fnv1a(text);
+      return !bundled.has(`fr/${hash}`) && !remote.has(hash) && !skipped.has(hash);
+    });
+    // Obergrenze für die Zahl der Aufrufe, falls der Server immer wieder "später" sagt.
+    for (let round = 0; todo.length > 0 && round < 400; round++) {
+      const batch = todo.slice(0, BATCH);
+      const response = await apiPost<EnsureResponse>("/api/audio/ensure", { texts: batch });
+      const ready = new Set(response.ready);
+      const pending = new Set(response.pending);
+      for (const hash of ready) remote.add(hash);
+      if (ready.size > 0) saveRemote();
+      for (const text of batch) {
+        const hash = fnv1a(text);
+        if (!ready.has(hash) && !pending.has(hash)) skipped.add(hash);
+      }
+      if (response.stopped) {
+        // Tageslimit erreicht, Dienst nicht eingerichtet oder gestört. Später noch einmal.
+        pausedUntil = Date.now() + PAUSE_MS;
+        break;
+      }
+      todo = [...batch.filter((text) => pending.has(fnv1a(text))), ...todo.slice(BATCH)];
+    }
+  } catch {
+    // Kein Netz oder abgemeldet. Die Stimme des Geräts springt ein.
+    pausedUntil = Date.now() + PAUSE_MS;
+  } finally {
+    ensuring = false;
+    const next = queued;
+    queued = null;
+    if (next) void ensureAudio(next);
+  }
 }

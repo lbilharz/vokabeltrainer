@@ -21,6 +21,13 @@ declare global {
      * Fehlt er, antwortet /api/extract mit 503.
      */
     GEMINI_API_KEY?: string;
+    /**
+     * Schlüssel für die Sprachausgabe (ElevenLabs).
+     *
+     * Gesetzt mit `wrangler secret put ELEVENLABS_API_KEY`, lokal über `.dev.vars`.
+     * Fehlt er, rendert /api/audio/ensure nichts und meldet `stopped: "unconfigured"`.
+     */
+    ELEVENLABS_API_KEY?: string;
   }
 }
 

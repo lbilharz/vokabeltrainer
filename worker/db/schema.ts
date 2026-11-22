@@ -146,3 +146,16 @@ export const extractLog = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.day] })],
 );
+
+/** Zähler für die Sprachausgabe. Eine Zeile pro Nutzer und Tag (Tagesnummer in UTC). */
+export const audioLog = sqliteTable(
+  "audio_log",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: integer("day").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })],
+);

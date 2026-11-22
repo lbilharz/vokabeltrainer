@@ -15,7 +15,7 @@ import { Settings } from "./components/Settings";
 import { TEMPLATES, buildSets } from "./data/sets";
 import { type User, postSync } from "./lib/account";
 import { ApiError } from "./lib/api";
-import { loadAudioIndex, speak, stop } from "./lib/audio";
+import { ensureAudio, loadAudioIndex, speak, stop } from "./lib/audio";
 import {
   type Persisted,
   type Settings as SettingsData,
@@ -98,10 +98,13 @@ export function Trainer({ user, onSignedOut }: Props) {
       setData((prev) => {
         const merged = applyResponse(prev.cards, prev.sync, pushed, response.cards, response.now);
         // Sets: je Set gewinnt die jüngere Änderung, wie bei den Karten.
-        const mergedSets = { ...prev.sets };
+        // Ohne Änderung bleibt dasselbe Objekt. Sonst rechnet die App bei jedem Abgleich alles neu.
+        let mergedSets = prev.sets;
         for (const doc of response.sets ?? []) {
           const local = mergedSets[doc.id];
-          if (!local || doc.t >= local.t) mergedSets[doc.id] = doc;
+          if (local && (doc.t < local.t || (doc.t === local.t && doc.deleted === local.deleted))) continue;
+          if (mergedSets === prev.sets) mergedSets = { ...prev.sets };
+          mergedSets[doc.id] = doc;
         }
         const sent = new Map(pushedSets.map((doc) => [doc.id, doc.t]));
         const setsDirty = prev.setsDirty.filter((id) => sent.get(id) !== prev.sets[id]?.t);
@@ -145,8 +148,14 @@ export function Trainer({ user, onSignedOut }: Props) {
   const setMeta = (change: (prev: Persisted) => Partial<Persisted>) =>
     setData((prev) => ({ ...prev, ...change(prev), metaT: Date.now(), metaDirty: true }));
 
+  // Für jedes französische Wort soll es eine Aufnahme geben. Das läuft im Hintergrund.
   useEffect(() => {
-    loadAudioIndex();
+    const texts = sets.flatMap((set) => set.items.map((item) => item.fr));
+    if (texts.length > 0) void ensureAudio(texts);
+  }, [sets]);
+
+  useEffect(() => {
+    void loadAudioIndex();
     // Testlink /prefill: legt die Vorlagen in diesem Konto an. Normale Konten starten leer.
     if (location.pathname === "/prefill") {
       const now = Date.now();

@@ -29,6 +29,16 @@
     }
   ],
 
+  // Aufnahmen für neu fotografierte Wörter. Der Bucket wurde von Hand in der EU angelegt.
+  // Ohne "jurisdiction" sucht die Bindung im normalen Namensraum und findet ihn nicht.
+  "r2_buckets": [
+    {
+      "binding": "AUDIO",
+      "bucket_name": "travok-audio",
+      "jurisdiction": "eu"
+    }
+  ],
+
   "observability": {
     "enabled": true
   }
