@@ -1,7 +1,8 @@
 /** Konto, Passkey-Geräte und Abgleich. Spricht mit dem Worker. */
 
 import type { SyncCard } from "@shared/sync";
-import { apiDelete, apiGet, apiPost } from "./api";
+import type { SetDoc } from "@shared/types";
+import { ApiError, apiDelete, apiGet, apiPost } from "./api";
 import {
   createPasskey,
   usePasskey,
@@ -35,6 +36,8 @@ export interface SyncMeta {
 }
 
 export interface SyncResponse {
+  /** Fehlt bei einem älteren Server. */
+  sets?: SetDoc[];
   now: number;
   cards: SyncCard[];
   meta: SyncMeta | null;
@@ -145,6 +148,40 @@ export async function removeDevice(id: string): Promise<void> {
 }
 
 /** Liegt bewusst nicht unter /auth. */
-export function postSync(since: number, cards: SyncCard[], meta?: SyncMeta): Promise<SyncResponse> {
-  return apiPost<SyncResponse>("/api/sync", { since, cards, ...(meta ? { meta } : {}) });
+export function postSync(
+  since: number,
+  cards: SyncCard[],
+  meta?: SyncMeta,
+  sets: SetDoc[] = [],
+): Promise<SyncResponse> {
+  return apiPost<SyncResponse>("/api/sync", { since, cards, ...(meta ? { meta } : {}), sets });
+}
+
+/** Ein gelesener Eintrag. `check` heisst: die zwei Lesungen waren sich nicht einig. */
+export interface ExtractedItem {
+  c: string | null;
+  fr: string;
+  de: string;
+  n: string | null;
+  check: boolean;
+}
+
+export interface ExtractResponse {
+  items: ExtractedItem[];
+  /** 2 ist der Normalfall. Bei 1 fehlt die Gegenprobe. */
+  readings: 1 | 2;
+}
+
+/** Schickt ein Foto zum Lesen. Der Server speichert das Bild nicht. */
+export async function extractPhoto(photo: Blob): Promise<ExtractResponse> {
+  const response = await fetch("/api/extract", {
+    method: "POST",
+    headers: { "content-type": photo.type || "image/jpeg" },
+    body: photo,
+  });
+  const payload = (await response.json().catch(() => null)) as (ExtractResponse & { error?: string }) | null;
+  if (!response.ok || !payload) {
+    throw new ApiError(payload?.error ?? "Die Seite konnte nicht gelesen werden.", response.status);
+  }
+  return payload;
 }

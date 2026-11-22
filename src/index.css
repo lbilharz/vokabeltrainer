@@ -1085,3 +1085,200 @@ button.station-row:active .station-dot {
   background: #fff4d6;
   color: #7a5200;
 }
+
+/* ---------- Neue Vokabeln ---------- */
+
+.empty {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.empty h2 {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.btn.tall {
+  min-height: 56px;
+  font-size: 17px;
+}
+
+.add-set {
+  margin-top: auto;
+}
+
+.others {
+  margin-top: 0;
+}
+
+.lead.small {
+  font-size: 15px;
+}
+
+.photo-frame {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  min-height: 280px;
+  padding: 20px;
+  border: 2px dashed #cfc6bd;
+  border-radius: 24px;
+  background: var(--page);
+  font-size: 17px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.photo-page {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 14px;
+  align-content: start;
+  width: 168px;
+  height: 220px;
+  padding: 22px 18px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.photo-page span {
+  height: 8px;
+  border-radius: 4px;
+  background: #cfc6bd;
+}
+
+.photo-page span.dark {
+  background: var(--ink);
+}
+
+.tips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tips li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tips svg {
+  flex-shrink: 0;
+  color: var(--green);
+}
+
+.addset-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reading-mark {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 56px;
+  background: var(--rose-50);
+  color: var(--rose);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 2px solid var(--track);
+}
+
+.row.check {
+  margin: 6px 0;
+  padding: 10px 4px 10px 12px;
+  border-bottom: 0;
+  border-radius: 14px;
+  background: #fff4d6;
+}
+
+.row-fields {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row-fields input {
+  width: 100%;
+  min-height: 36px;
+  padding: 2px 8px;
+  margin-left: -8px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  /* Unter 16px zoomt iOS beim Tippen in die Seite. */
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.row-fields input.row-fr {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.row-fields input:focus {
+  outline: none;
+  border-color: var(--rose);
+  background: var(--surface);
+}
+
+.row-flag {
+  font-size: 12px;
+  font-weight: 800;
+  color: #7a5200;
+}
+
+.row-note {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-mark {
+    animation: none;
+  }
+}

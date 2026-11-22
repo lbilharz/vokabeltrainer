@@ -31,3 +31,22 @@ export interface CardState {
 
 /** Fortschritt aller Karten. Schlüssel ist Item.id. Fehlt ein Eintrag, ist die Karte neu. */
 export type Progress = Record<string, CardState>;
+
+/** Inhalt eines Vokabel-Sets, so wie er beim Konto auf dem Server liegt. */
+export interface SetData {
+  label: string;
+  /** Einzahl und Mehrzahl für die Anzeige, zum Beispiel ["Wort", "Wörter"]. */
+  unit: [string, string];
+  items: RawItem[];
+  /** Zeitpunkt des Anlegens in ms. Das neueste Set steht oben. */
+  createdAt: number;
+}
+
+/** Ein Set im Abgleich. Gelöschte Sets bleiben als leerer Eintrag stehen, damit die Löschung mitwandert. */
+export interface SetDoc {
+  id: string;
+  /** Änderungszeit in ms. Beim Abgleich gewinnt die jüngere. */
+  t: number;
+  deleted: boolean;
+  data: SetData | null;
+}

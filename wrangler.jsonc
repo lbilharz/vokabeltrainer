@@ -4,6 +4,12 @@
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-11",
 
+  // Die eigene Adresse. Die Domain ist bei Vercel gekauft, die DNS-Zone liegt bei Cloudflare.
+  // Passkeys hängen an dieser Adresse. Ein Wechsel heisst: alle legen einen neuen Passkey an.
+  "routes": [{ "pattern": "vok.cards", "custom_domain": true }],
+  // Die Adresse unter workers.dev ist aus. Ein Passkey von dort würde auf vok.cards nicht gelten.
+  "workers_dev": false,
+
   // Assets werden vom Vite-Plugin gebaut und eingehängt, daher kein "directory".
   // run_worker_first ist explizit, damit das Routing nicht am Sec-Fetch-Mode-Header hängt.
   "assets": {

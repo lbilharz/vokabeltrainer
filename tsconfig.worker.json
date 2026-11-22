@@ -18,6 +18,6 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  // Der Worker importiert nichts aus shared/. Was er braucht, liegt in worker/.
-  "include": ["worker"]
+  // Aus shared/ importiert der Worker nur die Zusammenführung der Fotoerkennung samt ihren Abhängigkeiten.
+  "include": ["worker", "shared/extract.ts", "shared/text.ts", "shared/types.ts"]
 }

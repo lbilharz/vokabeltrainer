@@ -17,8 +17,27 @@ const CARDS_PER_STATEMENT = 12;
 /** So viele Statements gehen in einen db.batch. Ein Batch ist eine Transaktion. */
 const STATEMENTS_PER_BATCH = 40;
 
+/** Ein Set braucht 6 gebundene Werte. Mit 12 Sets je Statement sind es 72. */
+const SETS_PER_STATEMENT = 12;
+
 /** Obergrenze für den JSON-Text der Einstellungen, in Zeichen. */
 const MAX_META_CHARS = 100_000;
+
+const setDataSchema = z.object({
+  label: z.string().min(1).max(60),
+  unit: z.tuple([z.string().min(1).max(20), z.string().min(1).max(20)]),
+  items: z
+    .array(
+      z.object({
+        c: z.string().max(60),
+        fr: z.string().min(1).max(300),
+        de: z.string().min(1).max(300),
+        n: z.string().max(300).optional(),
+      }),
+    )
+    .max(400),
+  createdAt: z.number().int().min(0),
+});
 
 const syncSchema = z.object({
   since: z.number().int().min(0),
@@ -38,6 +57,17 @@ const syncSchema = z.object({
       data: z.record(z.string(), z.unknown()),
       t: z.number().int().min(0),
     })
+    .optional(),
+  sets: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(40),
+        t: z.number().int().min(0),
+        deleted: z.boolean(),
+        data: setDataSchema.nullable(),
+      }),
+    )
+    .max(50)
     .optional(),
 });
 
@@ -123,6 +153,41 @@ sync.post("/sync", async (context) => {
     );
   }
 
+  // Sets: gleiche Regel wie bei den Karten. Gelöschte Sets speichern keine Daten.
+  const latestSets = new Map<string, NonNullable<typeof body.sets>[number]>();
+  for (const set of body.sets ?? []) {
+    const known = latestSets.get(set.id);
+    if (!known || set.t >= known.t) latestSets.set(set.id, set);
+  }
+  const incomingSets = [...latestSets.values()];
+
+  for (let i = 0; i < incomingSets.length; i += SETS_PER_STATEMENT) {
+    const rows = incomingSets.slice(i, i + SETS_PER_STATEMENT).map((set) => ({
+      userId,
+      setId: set.id,
+      data: set.deleted || !set.data ? null : JSON.stringify(set.data),
+      deleted: set.deleted,
+      t: set.t,
+      updatedAt: now,
+    }));
+
+    statements.push(
+      db
+        .insert(schema.sets)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: [schema.sets.userId, schema.sets.setId],
+          set: {
+            data: sql`excluded.data`,
+            deleted: sql`excluded.deleted`,
+            t: sql`excluded.t`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+          setWhere: sql`excluded.t >= ${schema.sets.t}`,
+        }),
+    );
+  }
+
   for (let i = 0; i < statements.length; i += STATEMENTS_PER_BATCH) {
     const chunk = statements.slice(i, i + STATEMENTS_PER_BATCH);
     await db.batch(chunk as unknown as [(typeof statements)[number]]);
@@ -148,9 +213,25 @@ sync.post("/sync", async (context) => {
 
   const metaRow = metaRows[0];
 
+  const setRows = await db
+    .select({
+      id: schema.sets.setId,
+      t: schema.sets.t,
+      deleted: schema.sets.deleted,
+      data: schema.sets.data,
+    })
+    .from(schema.sets)
+    .where(and(eq(schema.sets.userId, userId), gte(schema.sets.updatedAt, body.since)));
+
   return context.json({
     now,
     cards: cardRows,
+    sets: setRows.map((row) => ({
+      id: row.id,
+      t: row.t,
+      deleted: row.deleted,
+      data: row.data ? (JSON.parse(row.data) as unknown) : null,
+    })),
     meta: metaRow ? { data: JSON.parse(metaRow.data) as unknown, t: metaRow.t } : null,
   });
 });

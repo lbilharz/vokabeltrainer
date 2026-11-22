@@ -110,3 +110,39 @@ export const userMeta = sqliteTable("user_meta", {
   t: integer("t").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/**
+ * Vokabelsets eines Nutzers. `data` ist der JSON-Text des Sets.
+ * Ein gelöschtes Set bleibt als Zeile ohne Daten stehen, damit das Löschen synchronisiert wird.
+ * Gleiche Regeln wie bei den Karten: das größere `t` gewinnt.
+ */
+export const sets = sqliteTable(
+  "sets",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    setId: text("set_id").notNull(),
+    data: text("data"),
+    deleted: integer("deleted", { mode: "boolean" }).notNull(),
+    t: integer("t").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.setId] }),
+    index("sets_user_updated_idx").on(table.userId, table.updatedAt),
+  ],
+);
+
+/** Zähler für die Fotoerkennung. Eine Zeile pro Nutzer und Tag (Tagesnummer in UTC). */
+export const extractLog = sqliteTable(
+  "extract_log",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    day: integer("day").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })],
+);

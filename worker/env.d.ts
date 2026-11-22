@@ -14,6 +14,13 @@ declare global {
      * danach ist zu.
      */
     SIGNUP_CODE?: string;
+    /**
+     * Schlüssel für die Fotoerkennung (Google Gemini).
+     *
+     * Gesetzt mit `wrangler secret put GEMINI_API_KEY`, lokal über `.dev.vars`.
+     * Fehlt er, antwortet /api/extract mit 503.
+     */
+    GEMINI_API_KEY?: string;
   }
 }
 

@@ -7,7 +7,11 @@ import type { SetView } from "../data/sets";
 
 interface Props {
   sets: SetView[];
-  active: SetView;
+  /** Fehlt, solange das Konto noch kein Set hat. */
+  active: SetView | undefined;
+  /** true, solange der erste Abgleich läuft und noch nichts zu zeigen ist. */
+  loading: boolean;
+  onAddSet: () => void;
   progress: Progress;
   today: number;
   plan: TodayPlan;
@@ -28,6 +32,34 @@ function count(n: number, unit: [string, string]): string {
 
 export function Home(props: Props) {
   const { sets, active, progress, today, plan } = props;
+
+  if (!active) {
+    return (
+      <main className="screen home">
+        <header className="topbar">
+          <h1 className="greeting">Bonjour</h1>
+          <button className="icon-btn outlined" aria-label="Einstellungen" onClick={props.onOpenSettings}>
+            <Icon name="sliders" size={22} stroke={2.2} />
+          </button>
+        </header>
+        {props.loading ? (
+          <p className="lead empty" aria-busy="true">
+            Einen Moment …
+          </p>
+        ) : (
+          <section className="empty">
+            <h2>Noch keine Vokabeln</h2>
+            <p className="lead">Fotografiere die Vokabelseite aus deinem Buch. Dann geht es los.</p>
+            <button className="btn primary" onClick={props.onAddSet}>
+              <Icon name="camera" size={24} stroke={2.2} />
+              Vokabeln fotografieren
+            </button>
+          </section>
+        )}
+      </main>
+    );
+  }
+
   const stations = buildStations(active.items);
   const statuses = stationStatuses(stations, progress);
   const mastered = active.items.filter((item) => isMastered(getCard(progress, item.id, today))).length;
@@ -127,6 +159,11 @@ export function Home(props: Props) {
       <button className="text-btn" onClick={props.onOpenList}>
         <Icon name="list" size={20} />
         Alle {active.unit[1]} ansehen
+      </button>
+
+      <button className="btn quiet tall add-set" onClick={props.onAddSet}>
+        <Icon name="camera" size={24} stroke={2.2} />
+        Neue Vokabeln fotografieren
       </button>
 
       {sets.length > 1 && (

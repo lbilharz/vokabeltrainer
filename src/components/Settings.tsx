@@ -8,7 +8,9 @@ interface Props {
   user: User;
   syncStatus: SyncStatus;
   settings: SettingsData;
-  setLabel: string;
+  /** null, wenn das Konto noch kein Set hat. */
+  setLabel: string | null;
+  onDeleteSet: () => void;
   onChange: (settings: SettingsData) => void;
   onReset: () => void;
   onSignedOut: () => void;
@@ -151,17 +153,32 @@ export function Settings(props: Props) {
           </div>
         </section>
 
-        <button
-          className="btn danger"
-          onClick={() => {
-            if (confirm(`Fortschritt für „${setLabel}“ wirklich löschen?`)) {
-              props.onReset();
-              onClose();
-            }
-          }}
-        >
-          Fortschritt für „{setLabel}“ löschen
-        </button>
+        {setLabel !== null && (
+          <div className="account-actions">
+            <button
+              className="btn danger"
+              onClick={() => {
+                if (confirm(`Fortschritt für „${setLabel}“ wirklich löschen? Die Vokabeln bleiben.`)) {
+                  props.onReset();
+                  onClose();
+                }
+              }}
+            >
+              Fortschritt löschen
+            </button>
+            <button
+              className="btn danger"
+              onClick={() => {
+                if (confirm(`Das Set „${setLabel}“ wirklich löschen? Die Vokabeln sind dann weg.`)) {
+                  props.onDeleteSet();
+                  onClose();
+                }
+              }}
+            >
+              Set löschen
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

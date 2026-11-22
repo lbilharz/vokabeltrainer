@@ -10,9 +10,9 @@ import {
 } from "@shared/session";
 import { dayNumber, getCard } from "@shared/srs";
 import { applyResponse, outgoing, touch } from "@shared/sync";
-import type { CardState, Item } from "@shared/types";
+import type { CardState, Item, RawItem, SetDoc } from "@shared/types";
 import { Settings } from "./components/Settings";
-import { buildSets } from "./data/sets";
+import { TEMPLATES, buildSets } from "./data/sets";
 import { type User, postSync } from "./lib/account";
 import { ApiError } from "./lib/api";
 import { loadAudioIndex, speak, stop } from "./lib/audio";
@@ -24,6 +24,7 @@ import {
   saveFor,
   withMeta,
 } from "./lib/store";
+import { AddSet } from "./screens/AddSet";
 import { Done, type SessionStats } from "./screens/Done";
 import { Home } from "./screens/Home";
 import { Session } from "./screens/Session";
@@ -33,7 +34,8 @@ type View =
   | { name: "home" }
   | { name: "session"; steps: Step[]; run: number }
   | { name: "done"; stats: SessionStats }
-  | { name: "list" };
+  | { name: "list" }
+  | { name: "add" };
 
 interface Props {
   user: User;
@@ -49,12 +51,15 @@ export function Trainer({ user, onSignedOut }: Props) {
   const dataRef = useRef(data);
   dataRef.current = data;
   const syncing = useRef(false);
+  /** true, wenn während eines laufenden Abgleichs ein weiterer gewünscht wurde. */
+  const syncAgain = useRef(false);
   const [view, setView] = useState<View>({ name: "home" });
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const today = dayNumber(new Date());
-  const sets = useMemo(() => buildSets(data.custom), [data.custom]);
-  const active = sets.find((set) => set.id === data.activeSet) ?? sets[0]!;
+  const sets = useMemo(() => buildSets(data.sets), [data.sets]);
+  // Ohne Auswahl gilt das neueste Set. Ein leeres Konto hat keines.
+  const active = sets.find((set) => set.id === data.activeSet) ?? sets[0];
   const itemsById = useMemo(() => {
     const map = new Map<string, Item>();
     for (const set of sets) for (const item of set.items) map.set(item.id, item);
@@ -72,21 +77,35 @@ export function Trainer({ user, onSignedOut }: Props) {
    * Ohne Netz bleibt alles lokal und geht beim nächsten Mal mit.
    */
   const syncNow = useCallback(async () => {
-    if (syncing.current) return;
+    if (syncing.current) {
+      // Nicht verwerfen. Was inzwischen dazukam, geht direkt im Anschluss mit.
+      syncAgain.current = true;
+      return;
+    }
     syncing.current = true;
     setSyncStatus("running");
     const before = dataRef.current;
     const pushed = outgoing(before.cards, before.sync);
     const pushedMetaT = before.metaT;
+    const pushedSets = before.setsDirty.map((id) => before.sets[id]).filter((doc): doc is SetDoc => Boolean(doc));
     try {
       const response = await postSync(
         before.sync.since,
         pushed,
         before.metaDirty ? { data: metaOf(before), t: pushedMetaT } : undefined,
+        pushedSets,
       );
       setData((prev) => {
         const merged = applyResponse(prev.cards, prev.sync, pushed, response.cards, response.now);
-        let next: Persisted = { ...prev, cards: merged.cards, sync: merged.sync };
+        // Sets: je Set gewinnt die jüngere Änderung, wie bei den Karten.
+        const mergedSets = { ...prev.sets };
+        for (const doc of response.sets ?? []) {
+          const local = mergedSets[doc.id];
+          if (!local || doc.t >= local.t) mergedSets[doc.id] = doc;
+        }
+        const sent = new Map(pushedSets.map((doc) => [doc.id, doc.t]));
+        const setsDirty = prev.setsDirty.filter((id) => sent.get(id) !== prev.sets[id]?.t);
+        let next: Persisted = { ...prev, cards: merged.cards, sync: merged.sync, sets: mergedSets, setsDirty };
         // Der Meta-Block ist sauber, wenn er seit dem Senden nicht mehr geändert wurde.
         if (prev.metaDirty && prev.metaT === pushedMetaT) next.metaDirty = false;
         if (response.meta && response.meta.t > next.metaT) {
@@ -100,6 +119,10 @@ export function Trainer({ user, onSignedOut }: Props) {
       if (error instanceof ApiError && error.status === 401) onSignedOut();
     } finally {
       syncing.current = false;
+      if (syncAgain.current) {
+        syncAgain.current = false;
+        window.setTimeout(() => void syncNow(), 0);
+      }
     }
   }, [onSignedOut]);
 
@@ -110,7 +133,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     // Offene Änderungen gehen spätestens nach einer Minute mit.
     const timer = window.setInterval(() => {
       const current = dataRef.current;
-      if (current.sync.dirty.length > 0 || current.metaDirty) void syncNow();
+      if (current.sync.dirty.length > 0 || current.metaDirty || current.setsDirty.length > 0) void syncNow();
     }, 60_000);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
@@ -124,6 +147,28 @@ export function Trainer({ user, onSignedOut }: Props) {
 
   useEffect(() => {
     loadAudioIndex();
+    // Testlink /prefill: legt die Vorlagen in diesem Konto an. Normale Konten starten leer.
+    if (location.pathname === "/prefill") {
+      const now = Date.now();
+      setData((prev) => {
+        const sets = { ...prev.sets };
+        const dirty = new Set(prev.setsDirty);
+        TEMPLATES.forEach((template, index) => {
+          const existing = sets[template.id];
+          if (existing && !existing.deleted) return;
+          sets[template.id] = {
+            id: template.id,
+            t: now,
+            deleted: false,
+            data: { ...template.data, createdAt: now - index },
+          };
+          dirty.add(template.id);
+        });
+        return { ...prev, sets, setsDirty: [...dirty] };
+      });
+      // Der Abgleich beim Start kennt die neuen Sets noch nicht. Deshalb gleich noch einer.
+      window.setTimeout(() => void syncNow(), 0);
+    }
     // Die App startet immer auf dem Lernpfad. "Zurück" im Browser führt dorthin.
     history.replaceState({}, "", "/");
     const onPop = () => {
@@ -142,7 +187,7 @@ export function Trainer({ user, onSignedOut }: Props) {
   const goHome = () => history.back();
 
   const newLeft = NEW_PER_DAY - (data.newLog.day === today ? data.newLog.count : 0);
-  const plan = planToday(sets, active.id, data.cards, today, newLeft);
+  const plan = planToday(sets, active?.id ?? "", data.cards, today, newLeft);
 
   const startSession = (items: Item[]) => {
     if (items.length === 0) return;
@@ -186,7 +231,43 @@ export function Trainer({ user, onSignedOut }: Props) {
 
   const changeSettings = (settings: SettingsData) => setMeta(() => ({ settings }));
 
+  /** Legt ein neues Set an und zeigt gleich dessen Lernpfad. */
+  const addSet = (label: string, items: RawItem[]) => {
+    const now = Date.now();
+    const id = `s${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
+    setData((prev) => ({
+      ...prev,
+      sets: {
+        ...prev.sets,
+        [id]: { id, t: now, deleted: false, data: { label, unit: ["Wort", "Wörter"], items, createdAt: now } },
+      },
+      setsDirty: [...prev.setsDirty, id],
+      activeSet: id,
+      metaT: now,
+      metaDirty: true,
+    }));
+    goHome();
+    // Erst nach dem Speichern abgleichen. Der neue Stand liegt beim nächsten Zeichnen vor.
+    window.setTimeout(() => void syncNow(), 0);
+  };
+
+  /** Entfernt das aktive Set. Der leere Eintrag bleibt, damit die Löschung mitwandert. */
+  const deleteActive = () => {
+    if (!active) return;
+    const now = Date.now();
+    setData((prev) => ({
+      ...prev,
+      sets: { ...prev.sets, [active.id]: { id: active.id, t: now, deleted: true, data: null } },
+      setsDirty: [...new Set([...prev.setsDirty, active.id])],
+      activeSet: "",
+      metaT: now,
+      metaDirty: true,
+    }));
+    window.setTimeout(() => void syncNow(), 0);
+  };
+
   const resetActive = () => {
+    if (!active) return;
     const now = Date.now();
     setData((prev) => {
       // Nicht löschen, sondern auf "neu" setzen. Sonst bringt der Abgleich die Karten zurück.
@@ -212,6 +293,8 @@ export function Trainer({ user, onSignedOut }: Props) {
           today={today}
           plan={plan}
           dueTomorrow={countDueBy(sets, data.cards, today + 1)}
+          loading={sets.length === 0 && data.sync.since === 0 && syncStatus === "running"}
+          onAddSet={() => open({ name: "add" }, "/neu")}
           onStartToday={startToday}
           onStartStation={startStation}
           onSwitchSet={(id) => setMeta(() => ({ activeSet: id }))}
@@ -239,21 +322,23 @@ export function Trainer({ user, onSignedOut }: Props) {
       {view.name === "done" && (
         <Done
           stats={view.stats}
-          unit={active.unit}
+          unit={active?.unit ?? ["Wort", "Wörter"]}
           dueTomorrow={countDueBy(sets, data.cards, today + 1)}
           onHome={goHome}
         />
       )}
-      {view.name === "list" && (
+      {view.name === "list" && active && (
         <WordList set={active} progress={data.cards} rate={data.settings.rate} onBack={goHome} />
       )}
+      {view.name === "add" && <AddSet onSave={addSet} onClose={goHome} />}
       {settingsOpen && (
         <Settings
           user={user}
           syncStatus={syncStatus}
           onSignedOut={onSignedOut}
           settings={data.settings}
-          setLabel={active.label}
+          setLabel={active?.label ?? null}
+          onDeleteSet={deleteActive}
           onChange={changeSettings}
           onReset={resetActive}
           onClose={() => setSettingsOpen(false)}
