@@ -1,3 +1,4 @@
+import { hasGaps } from "./copy";
 import { getCard, isDue } from "./srs";
 import { norm } from "./text";
 import type { CardState, Item, Progress } from "./types";
@@ -5,11 +6,15 @@ import type { CardState, Item, Progress } from "./types";
 /**
  * Aufgabenarten.
  * intro: neues Wort sehen und hören, deutsche Bedeutung wählen.
+ * gap: deutsches Wort sehen, im französischen Wort die Lücken füllen. Die Starthilfe vor dem freien Schreiben.
  * type: deutsches Wort sehen, französisch tippen.
  * listenChoice: nur hören, deutsche Bedeutung wählen.
  * listenType: nur hören, französisch tippen.
  */
-export type ExerciseKind = "intro" | "type" | "listenChoice" | "listenType";
+export type ExerciseKind = "intro" | "gap" | "type" | "listenChoice" | "listenType";
+
+/** Bis zu diesem Fach gibt es das Lückenwort. Danach schreibt das Kind immer frei. */
+export const GAP_MAX_BOX = 2;
 
 export interface Step {
   itemId: string;
@@ -45,8 +50,9 @@ export function shuffle<T>(xs: readonly T[], random: Random): T[] {
 /** Wählt die Aufgabenart nach dem Lernstand. Hör-Aufgaben nur, wenn sie an sind. */
 export function pickKind(card: CardState, listen: boolean, random: Random): ExerciseKind {
   if (!card.seen) return "intro";
-  if (!listen || random() < 0.5) return "type";
-  return card.box >= 3 ? "listenType" : "listenChoice";
+  if (listen && random() >= 0.5) return card.box >= 3 ? "listenType" : "listenChoice";
+  // Solange das Wort neu ist, wechseln sich Lückenwort und freies Schreiben ab.
+  return card.box <= GAP_MAX_BOX && random() < 0.5 ? "gap" : "type";
 }
 
 /** Vier deutsche Antworten: die richtige und drei falsche, bevorzugt aus demselben Abschnitt. */
@@ -75,7 +81,9 @@ export function makeStep(
   listen: boolean,
   random: Random,
 ): Step {
-  const kind = pickKind(card, listen, random);
+  let kind = pickKind(card, listen, random);
+  // Ohne Buchstaben gibt es nichts zu füllen.
+  if (kind === "gap" && !hasGaps(item.fr)) kind = "type";
   if (kind === "intro" || kind === "listenChoice") {
     return { itemId: item.id, kind, options: buildOptions(item, pool, random) };
   }

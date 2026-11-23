@@ -1519,3 +1519,160 @@ a.btn {
 .session.answered .answer {
   margin-bottom: 0;
 }
+
+/* ---------- Abschreiben ---------- */
+
+.chip.good {
+  background: var(--green-50);
+  color: var(--green-dark);
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+
+.copy-field {
+  position: relative;
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.copy-field:focus-within {
+  border-color: var(--rose);
+}
+
+.copy-word {
+  font-size: clamp(24px, 7.5vw, 34px);
+  line-height: 1.25;
+  font-weight: 800;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Noch nicht getippt: grau. Getippt: dunkel. Die nächste Stelle ist unterstrichen. */
+.copy-word .todo,
+.copy-word .next {
+  color: #b9afa6;
+}
+
+.copy-word .done {
+  color: var(--ink);
+}
+
+.copy-word .next {
+  display: inline-block;
+  min-width: 0.3em;
+  border-bottom: 3px solid var(--rose);
+  animation: copy-blink 1.1s steps(2, start) infinite;
+}
+
+.copy-word .next.miss {
+  color: var(--rose-dark);
+  border-bottom-color: var(--rose-dark);
+  animation: copy-shake 0.3s ease;
+}
+
+@keyframes copy-blink {
+  to {
+    border-bottom-color: transparent;
+  }
+}
+
+@keyframes copy-shake {
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copy-word .next,
+  .copy-word .next.miss {
+    animation: none;
+  }
+}
+
+/* Unsichtbar über dem Wort. Ein Tipp auf das Wort öffnet so die Tastatur. */
+.copy-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  opacity: 0;
+  /* Unter 16px zoomt iOS beim Tippen in die Seite. */
+  font-size: 16px;
+}
+
+.copy-insert {
+  align-self: flex-start;
+}
+
+.copy-de {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.copy-yours {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Die Stelle, die in der Antwort nicht stimmte. Unterstrichen, damit es nicht nur an der Farbe hängt. */
+.solution-fr mark {
+  padding: 0 2px;
+  border-radius: 4px;
+  background: #ffd98a;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Lückenwort ---------- */
+
+/* Eine offene Lücke: ein Strich in fester Breite. */
+.copy-word .blank {
+  display: inline-block;
+  width: 0.62em;
+  margin: 0 1px;
+  border-bottom: 3px solid #b9afa6;
+}
+
+.copy-word .blank.next {
+  border-bottom-color: var(--rose);
+}
+
+/* Die Starthilfe steht von Anfang an dunkel da. */
+.copy-word .given {
+  color: var(--ink);
+}
+
+.copy-field.solved.right {
+  border-color: var(--green);
+  background: var(--green-50);
+  color: var(--green-dark);
+}
+
+.copy-field.solved.near {
+  border-color: #b07a10;
+  background: #fff4d6;
+  color: #7a5200;
+}
+
+.copy-field.solved.wrong {
+  border-color: var(--rose);
+  background: var(--rose-50);
+  color: var(--rose-dark);
+}

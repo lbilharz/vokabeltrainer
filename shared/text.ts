@@ -99,7 +99,7 @@ export function isCorrect(answer: string, targets: string[]): boolean {
 export type Closeness = "accents" | "article" | "typo" | null;
 
 /** Akzente und Ligaturen weg: "découvrir" und "decouvrir" sind danach gleich. */
-function fold(s: string): string {
+export function fold(s: string): string {
   return s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -112,7 +112,7 @@ function fold(s: string): string {
  * Zwei vertauschte Nachbarbuchstaben zählen als eine Änderung.
  * Bricht ab, sobald es mehr als max sind.
  */
-function editDistance(a: string, b: string, max: number): number {
+export function editDistance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
   let before: number[] = [];
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);

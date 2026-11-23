@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type Step, makeStep, targetsFor } from "@shared/session";
+import { closestOf, copySlots, copyTarget, gapSlots, markDiff, rateGaps } from "@shared/copy";
 import { getCard, introduce, rate } from "@shared/srs";
 import { type Closeness, closeness, isCorrect, norm } from "@shared/text";
 import type { CardState, Item, Progress } from "@shared/types";
+import { CopyWord } from "../components/CopyWord";
 import { Icon } from "../components/Icon";
 import { speak } from "../lib/audio";
 import type { Settings } from "../lib/store";
@@ -31,6 +33,7 @@ const NEAR_NOTES: Record<"accents" | "typo", string> = {
 
 const PROMPTS: Record<Step["kind"], string> = {
   intro: "Was heißt das auf Deutsch?",
+  gap: "Wie heißt das auf Französisch? Fülle die Lücken.",
   type: "Wie heißt das auf Französisch?",
   listenChoice: "Hör zu. Was heißt das auf Deutsch?",
   listenType: "Hör zu. Schreibe, was du hörst.",
@@ -46,6 +49,11 @@ export function Session(props: Props) {
   const [result, setResult] = useState<{ correct: boolean; near?: "accents" | "typo" } | null>(null);
   /** true, sobald der Hinweis auf den fehlenden Artikel gezeigt wurde. Danach zählt der Versuch. */
   const [articleHint, setArticleHint] = useState(false);
+  /**
+   * true, solange das Kind das Wort abschreibt. Das kommt nach dem Kennenlernen und nach einem Fehler.
+   * Erst danach erscheint die Rückmeldung mit "Weiter". So lässt sich die Lösung nicht überklicken.
+   */
+  const [copying, setCopying] = useState(false);
   const stats = useRef({ items: new Set<string>(), again: new Set<string>(), introduced: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -61,15 +69,20 @@ export function Session(props: Props) {
 
   // Die Rückmeldung klebt am unteren Rand. Der Inhalt darüber bekommt so viel Luft, wie sie hoch ist.
   useLayoutEffect(() => {
-    setSheetHeight(result ? (sheetRef.current?.offsetHeight ?? 0) : 0);
-  }, [result, pos]);
+    setSheetHeight(result && !copying ? (sheetRef.current?.offsetHeight ?? 0) : 0);
+  }, [result, copying, pos]);
 
   // Nach dem Prüfen liegt der Fokus auf "Weiter". So geht es mit Enter weiter.
   useEffect(() => {
-    if (result) nextRef.current?.focus();
-  }, [result]);
+    if (result && !copying) nextRef.current?.focus();
+  }, [result, copying]);
 
   const say = () => speak(item.fr, "fr", settings.rate);
+  const copyText = copyTarget(item.fr);
+  const sheetOpen = result !== null && !copying;
+  // Bei "Fast richtig" zeigt die Lösung die Stellen, die nicht stimmten.
+  const nearMarks =
+    result?.near && step.kind !== "gap" ? markDiff(typed, closestOf(typed, targetsFor(item, pool))) : null;
 
   const check = (giveUp = false) => {
     if (result) return;
@@ -101,6 +114,19 @@ export function Session(props: Props) {
       }
     }
 
+    finish(correct, near, step.kind === "intro" || (!hasChoices && !correct));
+  };
+
+  /** Das Lückenwort ist gefüllt. missed zählt die Lücken mit einem Fehlversuch. */
+  const gapDone = (missed: number) => {
+    if (result) return;
+    const rated = rateGaps(gapSlots(copyText), missed);
+    // Das Wort ist schon Buchstabe für Buchstabe geschrieben. Abschreiben kommt hier nicht noch einmal.
+    finish(rated.correct, rated.near ? "typo" : undefined, false);
+  };
+
+  /** Trägt das Ergebnis ein und zeigt die Rückmeldung. copyAfter: vorher das Wort abschreiben lassen. */
+  const finish = (correct: boolean, near: "accents" | "typo" | undefined, copyAfter: boolean) => {
     const card = getCard(props.progress, item.id, today);
     const isIntro = step.kind === "intro";
     // Eine neue Karte wird nur vorgestellt. Bewertet wird sie erst beim zweiten Mal.
@@ -114,10 +140,18 @@ export function Session(props: Props) {
       setQueue((q) => [...q, makeStep(item, next, pool, settings.listen, Math.random)]);
     }
 
-    // Tastatur schliessen, sonst verdeckt sie die Rückmeldung.
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    if (step.kind === "type") say();
+    // Abschreiben: nach dem Kennenlernen immer, sonst nach einer falschen geschriebenen Antwort.
+    const needsCopy = copyAfter && copySlots(copyText).some((slot) => !slot.given);
+    // Ohne Abschreiben die Tastatur schliessen, sonst verdeckt sie die Rückmeldung.
+    if (!needsCopy && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (step.kind === "type" || step.kind === "gap") say();
+    setCopying(needsCopy);
     setResult({ correct, near });
+  };
+
+  const copied = () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setCopying(false);
   };
 
   const advance = () => {
@@ -134,6 +168,7 @@ export function Session(props: Props) {
     setChoice(null);
     setResult(null);
     setArticleHint(false);
+    setCopying(false);
   };
 
   const done = pos + (result ? 1 : 0);
@@ -142,8 +177,8 @@ export function Session(props: Props) {
 
   return (
     <main
-      className={`screen session ${result ? "answered" : ""}`}
-      style={result ? { paddingBottom: sheetHeight + 16 } : undefined}
+      className={`screen session ${sheetOpen ? "answered" : ""}`}
+      style={sheetOpen ? { paddingBottom: sheetHeight + 16 } : undefined}
     >
       <header className="session-top">
         <button className="icon-btn" aria-label="Üben beenden" onClick={props.onClose}>
@@ -154,11 +189,28 @@ export function Session(props: Props) {
         </div>
       </header>
 
+      {result && copying && (
+        <div className="question">
+          <span className={`chip ${result.correct ? "good" : ""}`}>
+            {result.correct ? "Richtig" : step.kind === "intro" ? "Merk dir" : "Noch nicht"}
+          </span>
+          <p className="prompt">Schreib es einmal ab.</p>
+          <CopyWord key={pos} target={copyText} onDone={copied} />
+          <p className="copy-de">{item.de}</p>
+          {!hasChoices && norm(typed) && (
+            <p className="copy-yours">
+              Du hast geschrieben: <s lang="fr">{typed}</s>
+            </p>
+          )}
+        </div>
+      )}
+
+      {!copying && (
       <div className="question">
         {step.kind === "intro" && <span className="chip">Neu</span>}
         <p className="prompt">{PROMPTS[step.kind]}</p>
 
-        {step.kind === "type" && <h1 className="word">{item.de}</h1>}
+        {(step.kind === "type" || step.kind === "gap") && <h1 className="word">{item.de}</h1>}
 
         {step.kind === "intro" && (
           <div className="word-row">
@@ -177,8 +229,22 @@ export function Session(props: Props) {
           </button>
         )}
       </div>
+      )}
 
-      {hasChoices ? (
+      {copying ? null : step.kind === "gap" ? (
+        <div className="answer">
+          {result ? (
+            // Nach der Aufgabe steht das ganze Wort da. Das Feld nimmt nichts mehr an.
+            <div className={`copy-field solved ${result.near ? "near" : result.correct ? "right" : "wrong"}`}>
+              <div className="copy-word" lang="fr">
+                {copyText}
+              </div>
+            </div>
+          ) : (
+            <CopyWord key={pos} mode="gap" target={copyText} onDone={gapDone} />
+          )}
+        </div>
+      ) : hasChoices ? (
         <div className="options" role="group" aria-label="Antworten">
           {step.options!.map((option) => {
             const state = !result
@@ -239,16 +305,18 @@ export function Session(props: Props) {
 
       {!result && (
         <footer className={`actions ${hasChoices ? "pinned" : ""}`}>
-          <button className={`btn primary ${hasChoices && choice === null ? "waiting" : ""}`} onClick={() => check()}>
-            Prüfen
-          </button>
+          {step.kind !== "gap" && (
+            <button className={`btn primary ${hasChoices && choice === null ? "waiting" : ""}`} onClick={() => check()}>
+              Prüfen
+            </button>
+          )}
           <button className="text-btn center" onClick={() => check(true)}>
             Weiß ich nicht
           </button>
         </footer>
       )}
 
-      {result && (
+      {sheetOpen && result && (
         <footer
           ref={sheetRef}
           className={`sheet ${result.near ? "near" : result.correct ? "good" : "bad"}`}
@@ -269,11 +337,20 @@ export function Session(props: Props) {
                     : "Noch nicht"}
             </h2>
           </div>
-          {result.near && <p className="sheet-note">{NEAR_NOTES[result.near]}</p>}
+          {result.near &&
+            (step.kind === "gap" ? (
+              <p className="sheet-note">Eine Stelle hat nicht gleich gepasst. So schreibt man es:</p>
+            ) : (
+              <p className="sheet-note">
+                Deine Antwort: <span lang="fr">{typed.trim()}</span>. {NEAR_NOTES[result.near]}
+              </p>
+            ))}
           <div className="solution">
             <div className="solution-text">
               <div className="solution-fr" lang="fr">
-                {item.fr}
+                {nearMarks
+                  ? nearMarks.map((mark, index) => (mark.miss ? <mark key={index}>{mark.ch}</mark> : mark.ch))
+                  : item.fr}
               </div>
               <div className="solution-de">{item.de}</div>
               {item.n && <div className="solution-note">{item.n}</div>}

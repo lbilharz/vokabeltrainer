@@ -75,14 +75,21 @@ describe("pickKind", () => {
     expect(pickKind(card(1, 0, false), false, fixed([0.9]))).toBe("intro");
     expect(pickKind(card(1, 0, false), true, fixed([0.9]))).toBe("intro");
   });
-  it("ohne Hör-Aufgaben immer type", () => {
-    for (const box of [1, 2, 3, 5, 8]) {
+  it("ohne Hör-Aufgaben ab Box 3 immer type", () => {
+    for (const box of [3, 5, 8]) {
       expect(pickKind(card(box, 0), false, fixed([0.1]))).toBe("type");
       expect(pickKind(card(box, 0), false, fixed([0.9]))).toBe("type");
     }
   });
-  it("mit Hör-Aufgaben und random unter 0.5 gibt type", () => {
-    expect(pickKind(card(1, 0), true, fixed([0.49]))).toBe("type");
+  it("ohne Hör-Aufgaben wechseln in Box 1 und 2 Lückenwort und type", () => {
+    for (const box of [1, 2]) {
+      expect(pickKind(card(box, 0), false, fixed([0.1]))).toBe("gap");
+      expect(pickKind(card(box, 0), false, fixed([0.9]))).toBe("type");
+    }
+  });
+  it("mit Hör-Aufgaben und random unter 0.5 wird geschrieben", () => {
+    expect(pickKind(card(1, 0), true, fixed([0.49, 0.49]))).toBe("gap");
+    expect(pickKind(card(1, 0), true, fixed([0.49, 0.9]))).toBe("type");
     expect(pickKind(card(5, 0), true, fixed([0]))).toBe("type");
   });
   it("mit Hör-Aufgaben und random ab 0.5 gibt listenChoice in Box 1 und 2", () => {
@@ -158,9 +165,18 @@ describe("makeStep", () => {
     expect(step.options).toContain(item.de);
   });
   it("lässt options bei type weg", () => {
-    const step = makeStep(item, card(2, 0), pool, false, seeded(1));
+    const step = makeStep(item, card(2, 0), pool, false, fixed([0.9]));
     expect(step.kind).toBe("type");
     expect(step.options).toBeUndefined();
+  });
+  it("gibt in Box 1 auch das Lückenwort", () => {
+    const step = makeStep(item, card(1, 0), pool, false, fixed([0.1]));
+    expect(step.kind).toBe("gap");
+    expect(step.options).toBeUndefined();
+  });
+  it("nimmt type, wenn es nichts zu füllen gibt", () => {
+    const bare = { ...item, fr: "… ?" };
+    expect(makeStep(bare, card(1, 0), pool, false, fixed([0.1])).kind).toBe("type");
   });
   it("lässt options bei listenType weg", () => {
     const step = makeStep(item, card(4, 0), pool, true, fixed([0.9]));
