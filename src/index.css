@@ -197,6 +197,21 @@ button {
   transition: width 0.3s ease;
 }
 
+/* Zwei Balken übereinander: hell für "geübt", dunkel für "sitzt". */
+.bar.stacked {
+  position: relative;
+}
+
+.bar.stacked .bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.bar-fill.soft {
+  background: #a9d3bf;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -258,7 +273,9 @@ button {
   font-weight: 800;
 }
 
-.set-title span {
+/* Steht unter dem Balken. Neben dem Namen war bei langen Namen kein Platz. */
+.set-progress {
+  margin: 0;
   font-size: 14px;
   font-weight: 700;
   color: var(--muted);

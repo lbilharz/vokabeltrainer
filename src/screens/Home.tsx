@@ -74,7 +74,15 @@ export function Home(props: Props) {
   const stations = buildStations(active.items);
   const statuses = stationStatuses(stations, progress);
   const mastered = active.items.filter((item) => isMastered(getCard(progress, item.id, today))).length;
+  /** Mindestens einmal geübt. "Sitzen" dauert Tage, das hier zählt sofort. */
+  const practised = active.items.filter((item) => getCard(progress, item.id, today).seen).length;
   const total = active.items.length;
+  const summary =
+    total > 0 && mastered === total
+      ? "Alle sitzen"
+      : mastered > 0
+        ? `${practised} von ${total} geübt, ${mastered} sitzen`
+        : `${practised} von ${total} geübt`;
 
   const todayCount = plan.dueIds.length + plan.newIds.length;
   const parts: string[] = [];
@@ -124,9 +132,6 @@ export function Home(props: Props) {
                 <Icon name="pencil" size={18} stroke={2.2} />
               </button>
             </h2>
-            <span>
-              {mastered} von {total} sitzen
-            </span>
           </div>
         ) : (
           <form className="rename" onSubmit={rename}>
@@ -146,9 +151,12 @@ export function Home(props: Props) {
             </button>
           </form>
         )}
-        <div className="bar" role="img" aria-label={`${mastered} von ${total} sitzen`}>
+        {/* Hell: schon geübt. Dunkel: sitzt. */}
+        <div className="bar stacked" role="img" aria-label={`${practised} von ${total} geübt, ${mastered} sitzen`}>
+          <div className="bar-fill soft" style={{ width: `${total ? (practised / total) * 100 : 0}%` }} />
           <div className="bar-fill" style={{ width: `${total ? (mastered / total) * 100 : 0}%` }} />
         </div>
+        <p className="set-progress">{summary}</p>
       </section>
 
       <ol className="path">
@@ -162,7 +170,9 @@ export function Home(props: Props) {
             status === "done"
               ? sitting === n
                 ? `${count(n, active.unit)}, sitzt`
-                : `${sitting} von ${n} sitzen`
+                : sitting === 0
+                  ? `${count(n, active.unit)} geübt`
+                  : `${sitting} von ${n} sitzen`
               : status === "current"
                 ? `${count(n, active.unit)}, ${unseen} neu`
                 : count(n, active.unit);
