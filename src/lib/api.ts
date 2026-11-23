@@ -1,5 +1,7 @@
 /** Dünner Wrapper um fetch. Alle Antworten sind JSON. */
 
+import { APP_VERSION, VERSION_HEADER, noteServerVersion } from "./version";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -13,8 +15,9 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: { "content-type": "application/json", [VERSION_HEADER]: APP_VERSION, ...init?.headers },
   });
+  noteServerVersion(response.headers.get(VERSION_HEADER));
 
   // Fehler kommen als { error }. Eine kaputte Antwort wird zu null.
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;

@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from "./api";
+import { APP_VERSION, VERSION_HEADER } from "./version";
 
 /**
  * Die tägliche Erinnerung per Mitteilung.
@@ -78,7 +79,7 @@ export async function enablePush(time: number): Promise<void> {
     (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(key) }));
   await fetch("/api/push", {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", [VERSION_HEADER]: APP_VERSION },
     body: JSON.stringify({ endpoint: subscription.endpoint, hour: Math.floor(time / 60), minute: time % 60 }),
   }).then((response) => {
     if (!response.ok) throw new Error("Die Erinnerung konnte nicht gespeichert werden.");
@@ -91,7 +92,7 @@ export async function disablePush(): Promise<void> {
   if (!subscription) return;
   await fetch("/api/push", {
     method: "DELETE",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", [VERSION_HEADER]: APP_VERSION },
     body: JSON.stringify({ endpoint: subscription.endpoint }),
   }).catch(() => {
     // Ohne Netz bleibt der Eintrag beim Server. Das Gerät meldet sich trotzdem ab.

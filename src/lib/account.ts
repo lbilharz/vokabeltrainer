@@ -3,6 +3,7 @@
 import type { SyncCard } from "@shared/sync";
 import type { SetDoc } from "@shared/types";
 import { ApiError, apiDelete, apiGet, apiPost } from "./api";
+import { APP_VERSION, VERSION_HEADER } from "./version";
 import {
   createPasskey,
   usePasskey,
@@ -226,6 +227,7 @@ export async function extractPhoto(
     xhr.open("POST", "/api/extract");
     xhr.setRequestHeader("content-type", "application/json");
     xhr.setRequestHeader("accept", "application/x-ndjson");
+    xhr.setRequestHeader(VERSION_HEADER, APP_VERSION);
 
     onProgress({ type: "sending", fraction: 0 });
     xhr.upload.onprogress = (event) => {

@@ -29,6 +29,7 @@ import { Done, type SessionStats } from "./screens/Done";
 import { Home } from "./screens/Home";
 import { Session } from "./screens/Session";
 import { WordList } from "./screens/WordList";
+import { loadNewerVersion, newerVersion, onNewerVersion } from "./lib/version";
 
 type View =
   | { name: "home" }
@@ -152,6 +153,13 @@ export function Trainer({ user, onSignedOut }: Props) {
     setData((prev) => ({ ...prev, ...change(prev), metaT: Date.now(), metaDirty: true }));
 
   // Für jedes französische Wort soll es eine Aufnahme geben. Das läuft im Hintergrund.
+  // Kennt der Server eine neuere Version, lädt die App sie. Aber nur auf der Startseite, nie mitten in einer Runde.
+  const [updateWaiting, setUpdateWaiting] = useState(() => newerVersion() !== null);
+  useEffect(() => onNewerVersion(() => setUpdateWaiting(true)), []);
+  useEffect(() => {
+    if (updateWaiting && view.name === "home" && !settingsOpen && syncStatus !== "running") void loadNewerVersion();
+  }, [updateWaiting, view.name, settingsOpen, syncStatus]);
+
   useEffect(() => {
     const texts = sets.flatMap((set) => set.items.map((item) => item.fr));
     if (texts.length > 0) void ensureAudio(texts);

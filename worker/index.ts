@@ -7,8 +7,24 @@ import { check } from "./check";
 import { extract } from "./extract";
 import { push, runReminders } from "./push";
 import { sync } from "./sync";
+import { APP_VERSION, VERSION_HEADER } from "../shared/version";
 
 const app = new Hono<{ Bindings: Env }>();
+
+/*
+ * Jede Antwort nennt die Version des Servers. Daran merkt die App, dass es eine neuere gibt.
+ * Fragt eine andere Version an, steht das im Log. Das hilft bei der Fehlersuche.
+ */
+app.use("/api/*", async (context, next) => {
+  await next();
+  context.header(VERSION_HEADER, APP_VERSION);
+  const client = context.req.header(VERSION_HEADER);
+  if (client !== APP_VERSION) {
+    console.log(
+      `Andere Version fragt an: ${client ?? "ohne Angabe"}, hier läuft ${APP_VERSION}. ${context.req.method} ${context.req.path}`,
+    );
+  }
+});
 
 app.route("/api", sync);
 app.route("/api", extract);
