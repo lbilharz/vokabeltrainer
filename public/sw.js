@@ -5,7 +5,8 @@
  * Der Lernstand selbst liegt im Speicher des Browsers und braucht ihn nicht.
  *
  * Regeln:
- * - Seitenaufrufe: zuerst das Netz, ohne Netz die zuletzt geladene Seite.
+ * - Beim Einrichten lädt er die Seite und ihre Dateien schon einmal in den Cache.
+ * - Seitenaufrufe: zuerst das Netz. Ohne Netz oder bei lahmem Netz die gespeicherte Seite.
  * - /assets/: Dateien mit Prüfsumme im Namen. Einmal geladen, immer aus dem Cache.
  * - Aufnahmen: einmal geladen, immer aus dem Cache. Sie ändern sich nie.
  * - /api/: nie aus dem Cache. Anmeldung und Abgleich brauchen den Server.
@@ -15,9 +16,50 @@ const SHELL = "shell-v1";
 /** Bleibt bei einem Update der App erhalten. Den Namen kennt auch src/lib/audio.ts. */
 const AUDIO = "audio-v1";
 
-self.addEventListener("install", () => {
-  self.skipWaiting();
+/** So lange darf das Netz für die Seite brauchen. Danach startet die gespeicherte. */
+const PAGE_TIMEOUT_MS = 3000;
+
+self.addEventListener("install", (event) => {
+  // Schlägt das Vorladen fehl, läuft die App trotzdem. Sie startet dann nur noch nicht ohne Netz.
+  event.waitUntil(
+    preload()
+      .catch(() => {})
+      .then(() => self.skipWaiting()),
+  );
 });
+
+/**
+ * Lädt die Seite und ihre Dateien in den Cache.
+ * So startet die App schon nach dem ersten Besuch ohne Netz.
+ */
+async function preload() {
+  const cache = await caches.open(SHELL);
+  const response = await fetch("/", { cache: "no-cache" });
+  if (!response.ok) return;
+  const html = await response.clone().text();
+  await cache.put("/", response);
+
+  const files = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
+  const fetched = await Promise.all(files.map((file) => keep(cache, file)));
+
+  // Die Schrift steht nur im Stylesheet. Ohne sie startet die App auch, sieht aber anders aus.
+  const sheet = fetched.find((entry) => entry && entry.file.endsWith(".css"));
+  if (sheet) {
+    const css = await sheet.response.text();
+    const font = /url\((\/assets\/[^)]*-latin-wght-[^)]*\.woff2)\)/.exec(css);
+    if (font) await keep(cache, font[1]).catch(() => null);
+  }
+}
+
+/** Legt eine Datei in den Cache, falls sie dort fehlt. */
+async function keep(cache, file) {
+  const cached = await cache.match(file);
+  if (cached) return { file, response: cached };
+  const response = await fetch(file);
+  if (!response.ok) throw new Error(`${file}: ${response.status}`);
+  await cache.put(file, response.clone());
+  return { file, response };
+}
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
@@ -43,7 +85,7 @@ self.addEventListener("fetch", (event) => {
   }
   if (url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") {
-    event.respondWith(page(request));
+    event.respondWith(page(event));
     return;
   }
   if (url.pathname.startsWith("/assets/")) {
@@ -83,18 +125,62 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-/** Jede Adresse der App liefert dieselbe Seite. Sie liegt unter "/" im Cache. */
-async function page(request) {
+/**
+ * Jede Adresse der App liefert dieselbe Seite. Sie liegt unter "/" im Cache.
+ *
+ * Das Netz hat Vorrang, damit eine neue Version sofort ankommt.
+ * Antwortet es nicht schnell genug, startet die gespeicherte Seite.
+ * Das hilft, wenn das Handy noch am WLAN hängt, aber nichts mehr durchkommt.
+ */
+async function page(event) {
   const cache = await caches.open(SHELL);
-  try {
-    const response = await fetch(request);
+  const cached = await cache.match("/");
+  const fresh = fetch(event.request).then(async (response) => {
     if (response.ok) await cache.put("/", response.clone());
     return response;
-  } catch {
-    const cached = await cache.match("/");
-    if (cached) return cached;
-    return new Response("Keine Verbindung.", { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
+  });
+
+  if (!cached) {
+    try {
+      return await fresh;
+    } catch {
+      return offlinePage();
+    }
   }
+
+  // Kommt die Antwort erst nach der Frist, landet sie trotzdem noch im Cache.
+  event.waitUntil(fresh.catch(() => {}));
+  const tooSlow = new Promise((resolve) => setTimeout(() => resolve(null), PAGE_TIMEOUT_MS));
+  try {
+    return (await Promise.race([fresh, tooSlow])) ?? cached;
+  } catch {
+    return cached;
+  }
+}
+
+/** Erscheint nur, wenn das Netz fehlt und noch keine Seite gespeichert ist. */
+function offlinePage() {
+  const html = `<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vokabeltrainer</title>
+<style>
+body{margin:0;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;background:#f6f2ee;color:#2b2420;font-family:system-ui,-apple-system,sans-serif;text-align:center}
+h1{margin:0;font-size:24px}
+p{margin:0;max-width:300px;font-size:17px;line-height:1.4;color:#6b625c}
+button{margin-top:8px;height:56px;padding:0 28px;border:0;border-bottom:4px solid #8f3a43;border-radius:16px;background:#b94f59;color:#fff;font:inherit;font-size:18px;font-weight:800}
+</style>
+</head>
+<body>
+<h1>Keine Verbindung</h1>
+<p>Die App braucht einmal Internet zum Starten. Prüfe WLAN oder mobile Daten.</p>
+<button type="button" onclick="location.reload()">Noch einmal versuchen</button>
+<script>addEventListener("online", () => location.reload());</script>
+</body>
+</html>`;
+  return new Response(html, { status: 503, headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
 async function cacheFirst(request) {
