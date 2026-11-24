@@ -158,6 +158,9 @@ const PAUSE_MS = 5 * 60_000;
  * Jedes Wort wird einzeln aufgenommen. Bis eine Aufnahme fertig ist, spricht das Gerät.
  * Fehler bleiben still: beim nächsten Start geht es einfach weiter.
  */
+/** Längster Text, für den der Server eine Aufnahme macht. Muss zu worker/audio.ts passen. */
+const MAX_AUDIO_CHARS = 200;
+
 export async function ensureAudio(texts: string[]): Promise<void> {
   if (ensuring) {
     // Der laufende Durchgang nimmt die neue Liste danach auf.
@@ -169,6 +172,8 @@ export async function ensureAudio(texts: string[]): Promise<void> {
   try {
     await loadAudioIndex();
     let todo = [...new Set(texts)].filter((text) => {
+      // Der Server nimmt keinen längeren Text an. Ein einziger würde die ganze Gruppe scheitern lassen.
+      if (text.length > MAX_AUDIO_CHARS) return false;
       const hash = fnv1a(text);
       return !bundled.has(`fr/${hash}`) && !remote.has(hash) && !skipped.has(hash);
     });

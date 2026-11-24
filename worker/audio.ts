@@ -6,6 +6,7 @@ import { z } from "zod";
 import { fnv1a, sayText } from "../shared/text";
 import * as schema from "./db/schema";
 import { readSession } from "./session";
+import { countGlobal } from "./usage";
 
 export const audio = new Hono<{ Bindings: Env }>();
 
@@ -122,7 +123,7 @@ audio.post("/audio/ensure", async (context) => {
         setWhere: sql`${schema.audioLog.count} < ${MAX_PER_DAY}`,
       })
       .returning({ count: schema.audioLog.count });
-    if (counted.length === 0) {
+    if (counted.length === 0 || !(await countGlobal(db, "audio"))) {
       pending.push(...rest());
       stopped = "limit";
       break;

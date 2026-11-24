@@ -161,6 +161,23 @@ export const audioLog = sqliteTable(
 );
 
 /**
+ * Allgemeiner Tageszähler für bezahlte Aufrufe.
+ *
+ * `scope` ist die Nutzer-ID oder "*" für alle Konten zusammen. `kind` nennt den Dienst.
+ * Bewusst ohne Fremdschlüssel: die Zeile für alle Konten gehört zu keinem Nutzer.
+ */
+export const usageLog = sqliteTable(
+  "usage_log",
+  {
+    scope: text("scope").notNull(),
+    kind: text("kind").notNull(),
+    day: integer("day").notNull(),
+    count: integer("count").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scope, table.kind, table.day] })],
+);
+
+/**
  * Web-Push-Abo eines Geräts für die tägliche Übungserinnerung.
  *
  * `hour` ist die Stunde in Berlin. `lastSentDay` ist der Berliner Kalendertag

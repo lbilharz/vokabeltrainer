@@ -6,6 +6,8 @@ import { z } from "zod";
 import { mergeReadings, partialWords, type MergedItem, type ReadItem } from "../shared/extract";
 import * as schema from "./db/schema";
 import { readSession } from "./session";
+import { LIMITS } from "../shared/limits";
+import { countGlobal } from "./usage";
 
 export const extract = new Hono<{ Bindings: Env }>();
 
@@ -16,6 +18,10 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GE
 /** Größtes Bild in Bytes. Als Base64 ist es ein Drittel länger. */
 const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const MAX_BASE64_CHARS = Math.ceil(MAX_BODY_BYTES / 3) * 4;
+/** Grenzen für gelesene Einträge. Gleich wie in worker/sync.ts und shared/limits.ts. */
+const { MAX_WORD_CHARS, MAX_NOTE_CHARS, MAX_HEADING_CHARS } = LIMITS;
+/** Mehr Einträge stehen auf keiner Buchseite. */
+const MAX_ITEMS_PER_PAGE = 200;
 const MAX_PER_DAY = 30;
 const MAX_ITEMS = 400;
 const TIMEOUT_MS = 45_000;
@@ -223,15 +229,27 @@ async function callGemini(apiKey: string, body: string, onText?: (text: string) 
   }
 }
 
-/** Strings kürzen, leere Einträge entfernen. */
+/**
+ * Strings säubern und kürzen, leere Einträge entfernen.
+ *
+ * Die Grenzen sind dieselben wie beim Abgleich (worker/sync.ts). Das Modell hält sich nicht
+ * von selbst daran, und der Text auf dem Foto kann es zu beliebiger Ausgabe bringen.
+ * Ein zu langer Eintrag würde sonst später den Abgleich blockieren.
+ */
 function clean(items: ReadItem[]): ReadItem[] {
-  const text = (value: string | null) => value?.trim() || null;
+  const cut = (value: string, max: number) => value.replace(/\s+/g, " ").trim().slice(0, max).trim();
   const out: ReadItem[] = [];
   for (const item of items) {
-    const fr = item.fr.trim();
-    const de = item.de.trim();
+    const fr = cut(item.fr, MAX_WORD_CHARS);
+    const de = cut(item.de, MAX_WORD_CHARS);
     if (!fr || !de) continue;
-    out.push({ c: text(item.c), fr, de, n: text(item.n) });
+    out.push({
+      c: cut(item.c ?? "", MAX_HEADING_CHARS) || null,
+      fr,
+      de,
+      n: cut(item.n ?? "", MAX_NOTE_CHARS) || null,
+    });
+    if (out.length >= MAX_ITEMS_PER_PAGE) break;
   }
   return out;
 }
@@ -286,6 +304,10 @@ extract.post("/extract", async (context) => {
     .returning({ count: schema.extractLog.count });
   if (counted.length === 0) {
     return context.json({ error: "Für heute sind es genug Fotos. Morgen geht es weiter." }, 429);
+  }
+  // Die Obergrenze für alle Konten zusammen schützt das Budget.
+  if (!(await countGlobal(db, "extract"))) {
+    return context.json({ error: "Heute wurden schon sehr viele Fotos gelesen. Morgen geht es weiter." }, 429);
   }
 
   const apiKey = context.env.GEMINI_API_KEY;

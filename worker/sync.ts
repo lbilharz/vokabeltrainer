@@ -5,6 +5,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as schema from "./db/schema";
 import { readSession } from "./session";
+import { LIMITS } from "../shared/limits";
 
 export const sync = new Hono<{ Bindings: Env }>();
 
@@ -24,19 +25,26 @@ const SETS_PER_STATEMENT = 12;
 const MAX_META_CHARS = 100_000;
 
 const setDataSchema = z.object({
-  label: z.string().min(1).max(60),
+  label: z.string().min(1).max(LIMITS.MAX_LABEL_CHARS),
   unit: z.tuple([z.string().min(1).max(20), z.string().min(1).max(20)]),
   items: z
     .array(
       z.object({
-        c: z.string().max(60),
-        fr: z.string().min(1).max(300),
-        de: z.string().min(1).max(300),
-        n: z.string().max(300).optional(),
+        c: z.string().max(LIMITS.MAX_HEADING_CHARS),
+        fr: z.string().min(1).max(LIMITS.MAX_WORD_CHARS),
+        de: z.string().min(1).max(LIMITS.MAX_WORD_CHARS),
+        n: z.string().max(LIMITS.MAX_NOTE_CHARS).optional(),
       }),
     )
-    .max(400),
+    .max(LIMITS.MAX_ITEMS_PER_SET),
   createdAt: z.number().int().min(0),
+});
+
+const setSchema = z.object({
+  id: z.string().min(1).max(40),
+  t: z.number().int().min(0),
+  deleted: z.boolean(),
+  data: setDataSchema.nullable(),
 });
 
 const syncSchema = z.object({
@@ -58,17 +66,8 @@ const syncSchema = z.object({
       t: z.number().int().min(0),
     })
     .optional(),
-  sets: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(40),
-        t: z.number().int().min(0),
-        deleted: z.boolean(),
-        data: setDataSchema.nullable(),
-      }),
-    )
-    .max(50)
-    .optional(),
+  // Die Sets werden einzeln geprüft, siehe unten. Ein ungültiges Set soll nicht alles blockieren.
+  sets: z.array(z.unknown()).max(50).optional(),
 });
 
 /**
@@ -154,8 +153,19 @@ sync.post("/sync", async (context) => {
   }
 
   // Sets: gleiche Regel wie bei den Karten. Gelöschte Sets speichern keine Daten.
-  const latestSets = new Map<string, NonNullable<typeof body.sets>[number]>();
-  for (const set of body.sets ?? []) {
+  // Ein Set, das die Grenzen sprengt, wird übersprungen. Karten, Einstellungen und die anderen Sets gehen durch.
+  // Früher lehnte der Server dann die ganze Anfrage ab, und das Gerät glich nie wieder ab.
+  const validSets: z.infer<typeof setSchema>[] = [];
+  let rejectedSets = 0;
+  for (const raw of body.sets ?? []) {
+    const parsed = setSchema.safeParse(raw);
+    if (parsed.success) validSets.push(parsed.data);
+    else rejectedSets++;
+  }
+  if (rejectedSets > 0) console.log(`Abgleich: ${rejectedSets} ungültige Sets übersprungen.`);
+
+  const latestSets = new Map<string, z.infer<typeof setSchema>>();
+  for (const set of validSets) {
     const known = latestSets.get(set.id);
     if (!known || set.t >= known.t) latestSets.set(set.id, set);
   }

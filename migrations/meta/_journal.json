@@ -36,6 +36,13 @@
       "when": 1795352058923,
       "tag": "0004_push_minute",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795472840826,
+      "tag": "0005_usage_log",
+      "breakpoints": true
     }
   ]
 }

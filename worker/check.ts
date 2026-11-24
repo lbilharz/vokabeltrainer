@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 import * as schema from "./db/schema";
 import { readSession } from "./session";
+import { CHECKS_PER_USER, countGlobal, countUse } from "./usage";
 
 export const check = new Hono<{ Bindings: Env }>();
 
@@ -78,8 +79,8 @@ const flagsSchema = z.object({
  * Gegenprobe für eine gelesene Vokabelliste.
  *
  * Sie markiert nur. Geändert wird nichts, denn das Buch hat recht und nicht das Modell.
- * Ein eigenes Tageslimit gibt es nicht: der Aufruf braucht eine Anmeldung,
- * ist klein und auf 150 Zeilen begrenzt.
+ * Jeder Aufruf kostet Geld bei Gemini. Deshalb gibt es ein Tageslimit pro Konto
+ * und eine Obergrenze für alle Konten zusammen.
  */
 check.post("/check", async (context) => {
   const db = drizzle(context.env.DB, { schema });
@@ -92,6 +93,14 @@ check.post("/check", async (context) => {
 
   const apiKey = context.env.GEMINI_API_KEY;
   if (!apiKey) return context.json({ error: "Die Erkennung ist nicht eingerichtet." }, 503);
+
+  // Gezählt wird vor dem Aufruf bei Gemini.
+  if (
+    !(await countUse(db, session.userId, "check", CHECKS_PER_USER)) ||
+    !(await countGlobal(db, "check"))
+  ) {
+    return context.json({ error: "Für heute sind es genug Gegenproben." }, 429);
+  }
 
   // Zeilenumbrüche in einem Eintrag würden die Nummerierung durcheinanderbringen.
   const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();

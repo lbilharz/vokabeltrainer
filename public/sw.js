@@ -136,7 +136,9 @@ async function page(event) {
   const cache = await caches.open(SHELL);
   const cached = await cache.match("/");
   const fresh = fetch(event.request).then(async (response) => {
-    if (response.ok) await cache.put("/", response.clone());
+    // Nur eine HTML-Seite wird als App gespeichert. Wer eine Datei direkt aufruft, überschreibt sie sonst.
+    const isPage = (response.headers.get("content-type") || "").includes("text/html");
+    if (response.ok && isPage) await cache.put("/", response.clone());
     return response;
   });
 

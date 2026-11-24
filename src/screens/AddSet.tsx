@@ -3,6 +3,7 @@ import type { RawItem } from "@shared/types";
 import { Icon } from "../components/Icon";
 import { type CheckKind, type ExtractedItem, checkItems, extractPhoto } from "../lib/account";
 import { shrinkPhoto } from "../lib/image";
+import { LIMITS } from "@shared/limits";
 
 interface Props {
   onSave: (label: string, items: RawItem[]) => void;
@@ -142,18 +143,25 @@ export function AddSet({ onSave, onClose }: Props) {
   const valid = rows.filter((row) => row.fr.trim() && row.de.trim());
   const toCheck = rows.filter((row) => row.check).length;
 
+  // Der Abgleich nimmt kein größeres Set an. Was darüber liegt, wird nicht übernommen.
+  const kept = valid.slice(0, LIMITS.MAX_ITEMS_PER_SET);
+
   const save = () => {
-    const name = label.trim() || "Neue Vokabeln";
-    if (valid.length === 0) return;
+    const name = label.trim().slice(0, LIMITS.MAX_LABEL_CHARS).trim() || "Neue Vokabeln";
+    if (kept.length === 0) return;
+    const cut = (text: string | null | undefined, max: number) => (text ?? "").trim().slice(0, max).trim();
     onSave(
       name,
-      valid.map((row) => ({
-        // Ohne Überschrift bleibt der Abschnitt leer. Der Name des Sets steht nur am Set.
-        c: row.c?.trim() || "",
-        fr: row.fr.trim(),
-        de: row.de.trim(),
-        ...(row.n?.trim() ? { n: row.n.trim() } : {}),
-      })),
+      kept.map((row) => {
+        const note = cut(row.n, LIMITS.MAX_NOTE_CHARS);
+        return {
+          // Ohne Überschrift bleibt der Abschnitt leer. Der Name des Sets steht nur am Set.
+          c: cut(row.c, LIMITS.MAX_HEADING_CHARS),
+          fr: cut(row.fr, LIMITS.MAX_WORD_CHARS),
+          de: cut(row.de, LIMITS.MAX_WORD_CHARS),
+          ...(note ? { n: note } : {}),
+        };
+      }),
     );
   };
 
@@ -295,8 +303,14 @@ export function AddSet({ onSave, onClose }: Props) {
               Bilder wählen
             </button>
           </div>
-          <button className={`btn primary ${valid.length === 0 ? "waiting" : ""}`} onClick={save}>
-            {valid.length === 1 ? "1 Vokabel übernehmen" : `${valid.length} Vokabeln übernehmen`}
+          {valid.length > kept.length && (
+            <p className="answer-hint" role="status">
+              Ein Set fasst höchstens {LIMITS.MAX_ITEMS_PER_SET} Vokabeln. Die übrigen {valid.length - kept.length} werden
+              nicht übernommen. Lege dafür ein zweites Set an.
+            </p>
+          )}
+          <button className={`btn primary ${kept.length === 0 ? "waiting" : ""}`} onClick={save}>
+            {kept.length === 1 ? "1 Vokabel übernehmen" : `${kept.length} Vokabeln übernehmen`}
           </button>
         </div>
       </main>
