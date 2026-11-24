@@ -3,6 +3,7 @@ import type { SyncStatus } from "../Trainer";
 import { type Device, type User, addThisDevice, listDevices, logout, removeDevice } from "../lib/account";
 import { DEFAULT_TIME, type PushState, disablePush, enablePush, readPushState } from "../lib/push";
 import type { Settings as SettingsData } from "../lib/store";
+import { checkForUpdate, versionDate } from "../lib/version";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -34,6 +35,23 @@ export function Settings(props: Props) {
   const { user, settings, setLabel, onChange, onClose } = props;
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /** Was die Suche nach einer neuen Version ergeben hat. */
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const built = versionDate();
+
+  const searchUpdate = async () => {
+    setSearching(true);
+    setUpdateNote(null);
+    const outcome = await checkForUpdate();
+    // Bei einer neuen Version lädt die Seite neu. Dann kommt die App hier nicht mehr an.
+    setSearching(false);
+    setUpdateNote(
+      outcome === "current"
+        ? "Du hast die neueste Version."
+        : "Gerade keine Verbindung. Versuch es später noch einmal.",
+    );
+  };
   const [push, setPush] = useState<PushState | null>(null);
   const [pushNote, setPushNote] = useState<string | null>(null);
   /** Uhrzeit der Erinnerung als Minuten seit Mitternacht. */
@@ -267,6 +285,21 @@ export function Settings(props: Props) {
             </button>
           </div>
         )}
+
+        <section className="field version">
+          <strong>Version</strong>
+          <small>{built ? `Stand vom ${built}` : "Entwicklungsfassung"}</small>
+          {updateNote && (
+            <p className="note" role="status">
+              {updateNote}
+            </p>
+          )}
+          <div className="account-actions">
+            <button className="btn quiet" disabled={searching} onClick={() => void searchUpdate()}>
+              {searching ? "Suche …" : "Nach neuer Version suchen"}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

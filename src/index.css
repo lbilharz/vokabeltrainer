@@ -1676,3 +1676,16 @@ a.btn {
   background: var(--rose-50);
   color: var(--rose-dark);
 }
+
+/* ---------- Version in den Einstellungen ---------- */
+
+.field.version small {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Hier steht nur ein Knopf. Er nimmt die ganze Breite. */
+.field.version .account-actions {
+  grid-template-columns: minmax(0, 1fr);
+}

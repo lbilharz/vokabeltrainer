@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testblatt Vokabeln</title>
+<!--
+  Ein Testblatt für die Fotoerkennung. Die Wörter sind selbst zusammengestellt, nicht aus einem Schulbuch.
+  Es sieht aus wie eine Vokabelseite: links Französisch, in der Mitte Deutsch, rechts ein Beispielsatz.
+  Die App soll die 18 Einträge lesen. Beispielsätze und der Merke-Kasten gehören nicht dazu.
+-->
+<style>
+  html { background: #8a8f98; }
+  body { margin: 0; padding: 18px; font-family: Georgia, "Times New Roman", serif; color: #111; }
+  .page { width: 780px; margin: 0 auto; padding: 22px 30px 20px; background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.35); }
+  header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 3px solid #1d4f91; padding-bottom: 6px; }
+  header h1 { margin: 0; font-size: 26px; color: #1d4f91; }
+  header span { font-family: Helvetica, Arial, sans-serif; font-size: 13px; color: #555; }
+  h2 { margin: 14px 0 4px; padding: 3px 10px; background: #1d4f91; color: #fff; font-family: Helvetica, Arial, sans-serif; font-size: 15px; letter-spacing: .03em; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 8px 4px 0; font-size: 17px; line-height: 1.25; vertical-align: top; border-bottom: 1px solid #d9d9d9; }
+  td.fr { width: 31%; font-weight: bold; }
+  td.de { width: 31%; }
+  td.ex { font-style: italic; font-size: 15px; color: #444; }
+  .merke { margin-top: 12px; padding: 7px 12px; border: 2px solid #c8891a; background: #fff6e0; font-family: Helvetica, Arial, sans-serif; font-size: 14px; }
+  .merke b { color: #8a5a00; }
+  footer { margin-top: 10px; font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #777; text-align: right; }
+  @media print { html { background: #fff; } body { padding: 0; } .page { box-shadow: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Unité 3</h1>
+    <span>Vocabulaire · En ville</span>
+  </header>
+
+  <h2>Volet 1</h2>
+  <table>
+    <tr><td class="fr">le marché</td><td class="de">der Markt</td><td class="ex">On va au marché le samedi.</td></tr>
+    <tr><td class="fr">la boulangerie</td><td class="de">die Bäckerei</td><td class="ex"></td></tr>
+    <tr><td class="fr">l'église <i>(f.)</i></td><td class="de">die Kirche</td><td class="ex"></td></tr>
+    <tr><td class="fr">les légumes <i>(m. pl.)</i></td><td class="de">das Gemüse</td><td class="ex">Tu aimes les légumes ?</td></tr>
+    <tr><td class="fr">le bœuf</td><td class="de">das Rindfleisch</td><td class="ex"></td></tr>
+    <tr><td class="fr">la fenêtre</td><td class="de">das Fenster</td><td class="ex">Ouvre la fenêtre, s'il te plaît.</td></tr>
+    <tr><td class="fr">acheter qc</td><td class="de">etw. kaufen</td><td class="ex">J'achète du pain.</td></tr>
+    <tr><td class="fr">demander qc à qn</td><td class="de">jdn nach etw. fragen</td><td class="ex"></td></tr>
+    <tr><td class="fr">cher/chère</td><td class="de">teuer</td><td class="ex">Ce pull est trop cher.</td></tr>
+    <tr><td class="fr">Ça coûte combien ?</td><td class="de">Wie viel kostet das?</td><td class="ex"></td></tr>
+  </table>
+
+  <h2>Volet 2</h2>
+  <table>
+    <tr><td class="fr">le garçon</td><td class="de">der Junge</td><td class="ex"></td></tr>
+    <tr><td class="fr">heureux/heureuse</td><td class="de">glücklich</td><td class="ex">Elle est heureuse.</td></tr>
+    <tr><td class="fr">avoir besoin de qc</td><td class="de">etw. brauchen</td><td class="ex">J'ai besoin d'un stylo.</td></tr>
+    <tr><td class="fr">essayer de + inf.</td><td class="de">versuchen, etw. zu tun</td><td class="ex"></td></tr>
+    <tr><td class="fr">déjà</td><td class="de">schon</td><td class="ex">Tu as déjà mangé ?</td></tr>
+    <tr><td class="fr">où</td><td class="de">wo</td><td class="ex">Où est la gare ?</td></tr>
+    <tr><td class="fr">le maître / la maîtresse</td><td class="de">der Lehrer / die Lehrerin</td><td class="ex"></td></tr>
+    <tr><td class="fr">à côté de</td><td class="de">neben</td><td class="ex">La poste est à côté de la mairie.</td></tr>
+  </table>
+
+  <div class="merke"><b>Merke:</b> «acheter» bekommt in manchen Formen einen Akzent: j'ach<u>è</u>te, aber nous achetons.</div>
+  <footer>Testblatt für vok.cards · 18 Einträge · selbst zusammengestellt</footer>
+</div>
+</body>
+</html>
