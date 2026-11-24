@@ -1,4 +1,5 @@
 import { hasGaps } from "./copy";
+import { daysLeft, newPerDay } from "./focus";
 import { getCard, isDue } from "./srs";
 import { norm } from "./text";
 import type { CardState, Item, Progress } from "./types";
@@ -74,13 +75,19 @@ export function buildOptions(item: Item, pool: readonly Item[], random: Random):
   return shuffle([item.de, ...wrong], random);
 }
 
+/**
+ * Baut die Aufgabe zu einer Karte.
+ * freeWriting: Gesehene Wörter werden nur frei geschrieben (Generalprobe). Neue Wörter beginnen wie immer mit dem Kennenlernen.
+ */
 export function makeStep(
   item: Item,
   card: CardState,
   pool: readonly Item[],
   listen: boolean,
   random: Random,
+  freeWriting = false,
 ): Step {
+  if (freeWriting && card.seen) return { itemId: item.id, kind: "type" };
   let kind = pickKind(card, listen, random);
   // Ohne Buchstaben gibt es nichts zu füllen.
   if (kind === "gap" && !hasGaps(item.fr)) kind = "type";
@@ -104,20 +111,44 @@ export function targetsFor(item: Item, pool: readonly Item[]): string[] {
 }
 
 export interface TodayPlan {
-  /** Fällige Karten aus allen Sets, älteste zuerst, höchstens REVIEW_LIMIT. */
+  /** Fällige Karten aus allen Lektionen, älteste zuerst, höchstens REVIEW_LIMIT. */
   dueIds: string[];
-  /** Neue Karten aus dem aktiven Set in Buchreihenfolge. */
+  /** Neue Karten: zuerst die aus der aktuellen Lektion, dann die aus dem Rückstand. */
   newIds: string[];
+  /** Wie viele der neuen Karten aus der aktuellen Lektion kommen. Sie stehen vorn in newIds. */
+  newFromActive: number;
+  /** Wie viele der neuen Karten aus anderen Lektionen kommen (Rückstand). Sie stehen hinten in newIds. */
+  newFromBacklog: number;
   /** Alle fälligen Karten, auch die über dem Limit. */
   dueTotal: number;
+  /** true, wenn die neuen Karten für einen Test aus der Fokus-Lektion kommen. */
+  forTest: boolean;
 }
 
+/** Der Test-Fokus, wie die Planung ihn braucht. */
+export interface FocusInput {
+  setId: string;
+  /** Tagesnummer des Tests. */
+  day: number;
+  /** Neue Karten, die heute schon gezeigt wurden (aus dem Tageszähler). */
+  newToday: number;
+}
+
+/**
+ * Plant die Runde "Heute".
+ *
+ * Wiederholungen kommen aus allen Lektionen.
+ * Neue Karten kommen zuerst aus der aktuellen Lektion.
+ * Hat eine andere Lektion noch ungesehene Wörter (der Rückstand), ist ein Platz der Runde für sie reserviert.
+ * Der Rückstand beginnt bei der ältesten Lektion. Das ist die letzte in `sets`, denn `sets` steht neueste zuerst.
+ */
 export function planToday(
   sets: readonly SetItems[],
   activeSetId: string,
   progress: Progress,
   today: number,
   newLeft: number,
+  focus?: FocusInput,
 ): TodayPlan {
   const due: { id: string; card: CardState }[] = [];
   for (const set of sets) {
@@ -128,14 +159,61 @@ export function planToday(
   }
   due.sort((a, b) => a.card.due - b.card.due || a.card.box - b.card.box);
 
+  const unseen = (items: readonly Item[]) =>
+    items.filter((item) => !getCard(progress, item.id, today).seen).map((item) => item.id);
+  const dueIds = due.slice(0, REVIEW_LIMIT).map((d) => d.id);
+
+  // Mit Test-Fokus kommen neue Karten nur aus der Fokus-Lektion. Es gibt keinen Rückstand-Platz.
+  // Die Zahl pro Tag ersetzt NEW_PER_ROUND und NEW_PER_DAY. Was heute schon gezeigt wurde, zählt dagegen.
+  const focusSet = focus ? sets.find((set) => set.id === focus.setId) : undefined;
+  if (focus && focusSet) {
+    const open = unseen(focusSet.items);
+    // Der Tageswert hängt am Stand vom Morgen. Deshalb zählen die heute gezeigten Karten mit.
+    const perDay = newPerDay(open.length + focus.newToday, daysLeft(focus, today));
+    const take = Math.max(0, Math.min(perDay - focus.newToday, open.length));
+    return {
+      dueIds,
+      newIds: open.slice(0, take),
+      newFromActive: take,
+      newFromBacklog: 0,
+      dueTotal: due.length,
+      forTest: true,
+    };
+  }
+
   const active = sets.find((set) => set.id === activeSetId);
   const limit = Math.max(0, Math.min(newLeft, NEW_PER_ROUND));
-  const newIds = (active?.items ?? [])
-    .filter((item) => !getCard(progress, item.id, today).seen)
-    .slice(0, limit)
-    .map((item) => item.id);
+  const fromActive = unseen(active?.items ?? []);
+  // Ohne aktuelle Lektion gibt es keine neuen Karten. So war es immer.
+  const backlog = active
+    ? [...sets]
+        .reverse()
+        .filter((set) => set.id !== active.id)
+        .flatMap((set) => unseen(set.items))
+    : [];
 
-  return { dueIds: due.slice(0, REVIEW_LIMIT).map((d) => d.id), newIds, dueTotal: due.length };
+  let takeActive: number;
+  let takeBacklog: number;
+  if (backlog.length === 0) {
+    takeActive = Math.min(limit, fromActive.length);
+    takeBacklog = 0;
+  } else {
+    // Erst höchstens limit - 1 aus der aktuellen Lektion, dann 1 aus dem Rückstand.
+    takeActive = Math.min(Math.max(limit - 1, 0), fromActive.length);
+    takeBacklog = Math.min(limit - takeActive, 1, backlog.length);
+    // Was übrig ist, füllt zuerst die aktuelle Lektion, dann der Rückstand.
+    takeActive += Math.min(limit - takeActive - takeBacklog, fromActive.length - takeActive);
+    takeBacklog += Math.min(limit - takeActive - takeBacklog, backlog.length - takeBacklog);
+  }
+
+  return {
+    dueIds,
+    newIds: [...fromActive.slice(0, takeActive), ...backlog.slice(0, takeBacklog)],
+    newFromActive: takeActive,
+    newFromBacklog: takeBacklog,
+    dueTotal: due.length,
+    forTest: false,
+  };
 }
 
 /** Zählt gesehene Karten, die bis einschliesslich `day` fällig sind. */

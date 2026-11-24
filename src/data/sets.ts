@@ -17,13 +17,15 @@ export interface SetView {
   label: string;
   unit: [string, string];
   items: Item[];
+  /** Zeitpunkt des Anlegens in ms. 0, wenn unbekannt (zum Beispiel bei Vorlagen ohne Datum). */
+  createdAt: number;
 }
 
-/** Die Sets eines Kontos mit festen Kennungen je Eintrag. Das neueste steht vorn. */
+/** Die Lektionen eines Kontos mit festen Kennungen je Eintrag. Die neueste steht vorn, ohne Datum zuletzt. */
 export function buildSets(docs: Record<string, SetDoc>): SetView[] {
   return Object.values(docs)
     .filter((doc): doc is SetDoc & { data: SetData } => !doc.deleted && doc.data !== null)
-    .sort((a, b) => b.data.createdAt - a.data.createdAt || a.id.localeCompare(b.id))
+    .sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0) || a.id.localeCompare(b.id))
     .map((doc) => {
       const taken = new Set<string>();
       const items: Item[] = [];
@@ -33,6 +35,6 @@ export function buildSets(docs: Record<string, SetDoc>): SetView[] {
         taken.add(id);
         items.push({ ...raw, id, setId: doc.id });
       }
-      return { id: doc.id, label: doc.data.label, unit: doc.data.unit, items };
+      return { id: doc.id, label: doc.data.label, unit: doc.data.unit, items, createdAt: doc.data.createdAt || 0 };
     });
 }

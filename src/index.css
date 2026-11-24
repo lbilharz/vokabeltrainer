@@ -229,6 +229,59 @@ button {
   font-weight: 800;
 }
 
+/* Bleibt oben stehen, wenn die Seite scrollt. Reicht bis an den Rand und unter die Statusleiste. */
+.topbar.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  min-height: calc(62px + env(safe-area-inset-top));
+  margin: calc(-16px - env(safe-area-inset-top)) -20px 0;
+  padding: calc(8px + env(safe-area-inset-top)) 20px 8px;
+  border-bottom: 2px solid var(--track);
+  background: var(--surface);
+}
+
+.topbar.sticky.back {
+  padding-left: 8px;
+}
+
+.topbar-actions,
+.topbar-start {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-start {
+  gap: 4px;
+  min-width: 0;
+}
+
+.topbar.back h1 {
+  font-size: 22px;
+}
+
+.pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: 2px solid var(--rose);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--rose-dark);
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.icon-btn.camera {
+  border: 2px solid var(--rose);
+  background: var(--surface);
+  color: var(--rose-dark);
+}
+
 /* ---------- Lernpfad ---------- */
 
 .today {
@@ -258,7 +311,191 @@ button {
 .set-head {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.section-head h2 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.vocab {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vocab-count {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.section-head:has(.chip-btn) {
+  align-items: center;
+  margin-top: 4px;
+}
+
+.chip-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.lesson-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border: 2px solid var(--line);
+  border-radius: 18px;
+}
+
+.lesson-card .set-title h2 {
+  font-size: 17px;
+}
+
+.lesson-date,
+.lesson-progress {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.lesson-date {
+  font-weight: 700;
+}
+
+.lesson-progress {
+  font-weight: 600;
+}
+
+.lesson-card .path {
+  padding: 0;
+  margin-left: 12px;
+}
+
+.hint-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.hint-link svg {
+  flex-shrink: 0;
+}
+
+/* ---------- Alle Lektionen ---------- */
+
+.screen.lessons {
+  gap: 14px;
+}
+
+.lesson-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lesson-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.lesson-row.current {
+  border-color: var(--rose);
+  background: var(--rose-50);
+}
+
+.lesson-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+}
+
+.lesson-mark.done {
+  background: var(--green);
+  color: #fff;
+}
+
+.ring-hole {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.lesson-text {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lesson-name {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.lesson-chip {
+  flex-shrink: 0;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lesson-go {
+  display: flex;
+  color: var(--muted);
+}
+
+.lessons-total {
+  margin-top: auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 .set-title {
@@ -369,43 +606,6 @@ button.station-row:active .station-dot {
   font-size: 14px;
   font-weight: 600;
   color: var(--muted);
-}
-
-.others {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: auto;
-}
-
-.others h2 {
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--muted);
-}
-
-.row-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 52px;
-  padding: 0 14px;
-  border: 2px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-  font-size: 16px;
-  font-weight: 700;
-  text-align: left;
-}
-
-.row-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 15px;
-  font-weight: 600;
 }
 
 /* ---------- Üben ---------- */
@@ -1124,14 +1324,6 @@ button.station-row:active .station-dot {
   font-size: 17px;
 }
 
-.add-set {
-  margin-top: auto;
-}
-
-.others {
-  margin-top: 0;
-}
-
 .lead.small {
   font-size: 15px;
 }
@@ -1688,4 +1880,324 @@ a.btn {
 /* Hier steht nur ein Knopf. Er nimmt die ganze Breite. */
 .field.version .account-actions {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* ---------- Test-Fokus ---------- */
+
+.lesson-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chip-btn.test-ask {
+  color: var(--rose-dark);
+}
+
+/* Das Schild "Test Fr" neben dem Namen einer Lektion. */
+.test-chip {
+  flex-shrink: 0;
+  margin-left: 8px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.lesson-name .test-chip {
+  vertical-align: 2px;
+}
+
+.test-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 2px solid var(--ink);
+  border-radius: 20px;
+}
+
+.test-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.test-card-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.test-card-head h2 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.test-card-head p {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.test-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.test-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.test-all-sure {
+  color: var(--green-dark);
+}
+
+/* Test-Tag wählen */
+
+.screen.testday {
+  gap: 16px;
+}
+
+.testday-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.test-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--page);
+}
+
+.test-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.test-panel-head h2 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.test-panel-ask {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.day-picker {
+  display: flex;
+  gap: 8px;
+}
+
+.day-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 60px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.day-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.day-btn[aria-pressed="true"] {
+  border-color: var(--rose);
+  background: var(--rose-50);
+  color: var(--rose-dark);
+}
+
+.day-btn[aria-pressed="true"] .day-date {
+  color: inherit;
+}
+
+.link-btn {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--rose-dark);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.other-day {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.other-day input {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.plan-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+}
+
+.plan-box p {
+  font-size: 15px;
+  font-weight: 600;
+  color: #4a423d;
+}
+
+.plan-box .plan-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.test-note {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.testday-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+}
+
+/* Ergebnis der Generalprobe */
+
+.screen.result {
+  gap: 18px;
+}
+
+.score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 22px 16px;
+  border-radius: 20px;
+  background: var(--green-50);
+  color: var(--green-dark);
+  text-align: center;
+}
+
+.score-number {
+  font-size: 44px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.score-verdict {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.score-lesson {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3d6b58;
+}
+
+.weak h2 {
+  margin-bottom: 2px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.weak ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weak li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 2px solid var(--track);
+}
+
+.weak-fr {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.weak-de {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.reason-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: #fff4d6;
+  color: #7a5200;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.praise {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
 }

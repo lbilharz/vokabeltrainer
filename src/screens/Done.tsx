@@ -1,4 +1,12 @@
+import type { WeakReason } from "@shared/focus";
 import { Icon } from "../components/Icon";
+
+/** Ein Wort, an dem in dieser Runde etwas nicht stimmte. */
+export interface WeakWord {
+  itemId: string;
+  /** Das erste Problem in der Runde. */
+  reason: WeakReason;
+}
 
 export interface SessionStats {
   /** Verschiedene Karten in dieser Runde. */
@@ -7,6 +15,8 @@ export interface SessionStats {
   again: number;
   /** Karten, die zum ersten Mal gezeigt wurden. */
   introduced: number;
+  /** Wörter mit Schwäche, in der Reihenfolge des ersten Problems. Die Generalprobe zeigt sie an. */
+  weak: WeakWord[];
 }
 
 interface Props {

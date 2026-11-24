@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isExpired, isFocusValid, practiceItems, roundKind, updateSure } from "@shared/focus";
 import type { Station } from "@shared/path";
 import {
   NEW_PER_DAY,
@@ -27,16 +28,30 @@ import {
 import { AddSet } from "./screens/AddSet";
 import { Done, type SessionStats } from "./screens/Done";
 import { Home } from "./screens/Home";
+import { Lessons } from "./screens/Lessons";
+import { Result } from "./screens/Result";
 import { Session } from "./screens/Session";
+import { TestDay } from "./screens/TestDay";
 import { WordList } from "./screens/WordList";
 import { loadNewerVersion, newerVersion, onNewerVersion } from "./lib/version";
 
 type View =
   | { name: "home" }
-  | { name: "session"; steps: Step[]; run: number }
+  | { name: "session"; steps: Step[]; run: number; options: RoundOptions }
   | { name: "done"; stats: SessionStats }
+  | { name: "result"; stats: SessionStats; testDay: number }
+  | { name: "test" }
   | { name: "list" }
+  | { name: "lessons" }
   | { name: "add" };
+
+/** Besonderheiten einer Runde. */
+interface RoundOptions {
+  /** Gesehene Wörter nur frei schreiben (Generalprobe und das Nachüben danach). */
+  freeWriting?: boolean;
+  /** Nach der Runde das Ergebnis der Generalprobe zeigen. Gilt für diesen Testtag. */
+  resultFor?: number;
+}
 
 interface Props {
   user: User;
@@ -59,7 +74,7 @@ export function Trainer({ user, onSignedOut }: Props) {
 
   const today = dayNumber(new Date());
   const sets = useMemo(() => buildSets(data.sets), [data.sets]);
-  // Ohne Auswahl gilt das neueste Set. Ein leeres Konto hat keines.
+  // Ohne Auswahl gilt die neueste Lektion. Ein leeres Konto hat keine.
   const active = sets.find((set) => set.id === data.activeSet) ?? sets[0];
   const itemsById = useMemo(() => {
     const map = new Map<string, Item>();
@@ -72,6 +87,17 @@ export function Trainer({ user, onSignedOut }: Props) {
   );
 
   useEffect(() => saveFor(user.id, data), [user.id, data]);
+
+  // Der Test-Fokus gilt nur, solange der Test nicht vorbei ist und die Lektion da ist.
+  const focus = isFocusValid(
+    data.focus,
+    today,
+    sets.map((set) => set.id),
+  )
+    ? data.focus
+    : undefined;
+  // Ob die Lektionen schon geladen sind. Ein neues Gerät hat sie vor dem ersten Abgleich noch nicht.
+  const setsLoaded = sets.length > 0 || data.sync.since > 0;
 
   /**
    * Gleicht den Stand mit dem Server ab. Je Karte gewinnt die jüngere Änderung.
@@ -148,7 +174,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     };
   }, [syncNow]);
 
-  /** Ändert Einstellungen, aktives Set oder Tageszähler und merkt das für den Abgleich vor. */
+  /** Ändert Einstellungen, aktuelle Lektion oder Tageszähler und merkt das für den Abgleich vor. */
   const setMeta = (change: (prev: Persisted) => Partial<Persisted>) =>
     setData((prev) => ({ ...prev, ...change(prev), metaT: Date.now(), metaDirty: true }));
 
@@ -200,24 +226,45 @@ export function Trainer({ user, onSignedOut }: Props) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  // Ein abgelaufener Fokus oder einer ohne Lektion wird entfernt. Das Null wandert zu den anderen Geräten.
+  const focusGone = Boolean(data.focus) && (isExpired(data.focus!, today) || (setsLoaded && !focus));
+  useEffect(() => {
+    if (focusGone) setMeta(() => ({ focus: null }));
+  }, [focusGone]);
+
   const open = (next: View, path: string) => {
     history.pushState({}, "", path);
     setView(next);
   };
   const goHome = () => history.back();
 
-  const newLeft = NEW_PER_DAY - (data.newLog.day === today ? data.newLog.count : 0);
-  const plan = planToday(sets, active?.id ?? "", data.cards, today, newLeft);
+  const newToday = data.newLog.day === today ? data.newLog.count : 0;
+  const newLeft = NEW_PER_DAY - newToday;
+  const plan = planToday(
+    sets,
+    active?.id ?? "",
+    data.cards,
+    today,
+    newLeft,
+    focus ? { setId: focus.setId, day: focus.day, newToday } : undefined,
+  );
 
-  const startSession = (items: Item[]) => {
+  const startSession = (items: Item[], options: RoundOptions = {}) => {
     if (items.length === 0) return;
     const steps = items.map((item) =>
-      makeStep(item, getCard(data.cards, item.id, today), poolFor(item), data.settings.listen, Math.random),
+      makeStep(
+        item,
+        getCard(data.cards, item.id, today),
+        poolFor(item),
+        data.settings.listen,
+        Math.random,
+        options.freeWriting,
+      ),
     );
     // Der Ton für die erste Aufgabe muss noch im Klick starten.
     const first = steps[0]!;
     if (first.kind !== "type") speak(itemsById.get(first.itemId)!.fr, "fr", data.settings.rate);
-    open({ name: "session", steps, run: Date.now() }, "/ueben");
+    open({ name: "session", steps, run: Date.now(), options }, "/ueben");
   };
 
   const startToday = () => {
@@ -229,6 +276,46 @@ export function Trainer({ user, onSignedOut }: Props) {
     const items = station.itemIds.map((id) => itemsById.get(id)!).filter(Boolean);
     const isNew = (item: Item) => !getCard(data.cards, item.id, today).seen;
     startSession([...items.filter(isNew), ...shuffle(items.filter((i) => !isNew(i)), Math.random)]);
+  };
+
+  /** Die Test-Karte: Übungsrunde mit den unsicheren Wörtern, am Tag vor dem Test die Generalprobe. */
+  const startTest = () => {
+    const set = focus && sets.find((s) => s.id === focus.setId);
+    if (!focus || !set) return;
+    if (roundKind(focus, today) === "practice") {
+      startSession(practiceItems(set.items, focus));
+      return;
+    }
+    // Generalprobe: alle Wörter. Neue zuerst zum Kennenlernen, dann die gesehenen gemischt.
+    const isNew = (item: Item) => !getCard(data.cards, item.id, today).seen;
+    startSession([...set.items.filter(isNew), ...shuffle(set.items.filter((i) => !isNew(i)), Math.random)], {
+      freeWriting: true,
+      resultFor: focus.day,
+    });
+  };
+
+  /** Merkt, ob das Kind ein Wort schreiben konnte. Ändert sich nichts, bleibt der Stand unberührt. */
+  const onWritten = (itemId: string, kind: Step["kind"], correct: boolean) => {
+    setData((prev) => {
+      const current = prev.focus;
+      if (!current || itemsById.get(itemId)?.setId !== current.setId) return prev;
+      const updated = updateSure(current, itemId, kind, correct);
+      if (updated === current) return prev;
+      return { ...prev, focus: updated, metaT: Date.now(), metaDirty: true };
+    });
+  };
+
+  /** Legt den Test-Fokus fest. Die Lektion wird zur aktuellen. Ein früherer Fokus fällt weg. */
+  const startFocus = (day: number) => {
+    if (!active) return;
+    const keep = data.focus?.setId === active.id && data.focus.day === day ? data.focus.sure : [];
+    setMeta(() => ({ focus: { setId: active.id, day, sure: keep }, activeSet: active.id }));
+    goHome();
+  };
+
+  const endFocus = () => {
+    setMeta(() => ({ focus: null }));
+    goHome();
   };
 
   const onProgress = (itemId: string, card: CardState, introduced: boolean) => {
@@ -251,7 +338,7 @@ export function Trainer({ user, onSignedOut }: Props) {
 
   const changeSettings = (settings: SettingsData) => setMeta(() => ({ settings }));
 
-  /** Legt ein neues Set an und zeigt gleich dessen Lernpfad. */
+  /** Legt eine neue Lektion an und zeigt gleich deren Lernpfad. */
   const addSet = (label: string, items: RawItem[]) => {
     const now = Date.now();
     const id = `s${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
@@ -271,7 +358,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     window.setTimeout(() => void syncNow(), 0);
   };
 
-  /** Benennt das aktive Set um. Der Lernstand bleibt, er hängt an den Wörtern. */
+  /** Benennt die aktuelle Lektion um. Der Lernstand bleibt, er hängt an den Wörtern. */
   const renameActive = (label: string) => {
     if (!active) return;
     const now = Date.now();
@@ -291,7 +378,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     window.setTimeout(() => void syncNow(), 0);
   };
 
-  /** Entfernt das aktive Set. Der leere Eintrag bleibt, damit die Löschung mitwandert. */
+  /** Entfernt die aktuelle Lektion. Der leere Eintrag bleibt, damit die Löschung mitwandert. */
   const deleteActive = () => {
     if (!active) return;
     const now = Date.now();
@@ -333,12 +420,15 @@ export function Trainer({ user, onSignedOut }: Props) {
           today={today}
           plan={plan}
           dueTomorrow={countDueBy(sets, data.cards, today + 1)}
+          focus={focus}
+          onOpenTest={() => open({ name: "test" }, "/test")}
+          onStartTest={startTest}
           loading={sets.length === 0 && data.sync.since === 0 && syncStatus === "running"}
           onAddSet={() => open({ name: "add" }, "/neu")}
           onRenameSet={renameActive}
           onStartToday={startToday}
           onStartStation={startStation}
-          onSwitchSet={(id) => setMeta(() => ({ activeSet: id }))}
+          onOpenLessons={() => open({ name: "lessons" }, "/lektionen")}
           onOpenList={() => open({ name: "list" }, "/liste")}
           onOpenSettings={() => setSettingsOpen(true)}
         />
@@ -353,8 +443,11 @@ export function Trainer({ user, onSignedOut }: Props) {
           today={today}
           settings={data.settings}
           onProgress={onProgress}
+          onWritten={onWritten}
+          freeWriting={view.options.freeWriting}
           onDone={(stats) => {
-            setView({ name: "done", stats });
+            const testDay = view.options.resultFor;
+            setView(testDay === undefined ? { name: "done", stats } : { name: "result", stats, testDay });
             void syncNow();
           }}
           onClose={goHome}
@@ -368,8 +461,47 @@ export function Trainer({ user, onSignedOut }: Props) {
           onHome={goHome}
         />
       )}
+      {view.name === "result" && (
+        <Result
+          stats={view.stats}
+          itemsById={itemsById}
+          lessonLabel={(focus && sets.find((s) => s.id === focus.setId)?.label) ?? active?.label ?? ""}
+          testDay={view.testDay}
+          today={today}
+          onRetry={(items) => startSession(items, { freeWriting: true })}
+          onHome={goHome}
+        />
+      )}
+      {view.name === "test" && active && (
+        <TestDay
+          set={active}
+          progress={data.cards}
+          today={today}
+          focus={focus}
+          otherLabel={focus && focus.setId !== active.id ? sets.find((s) => s.id === focus.setId)?.label : undefined}
+          onStart={startFocus}
+          onEnd={endFocus}
+          onOpenList={() => open({ name: "list" }, "/liste")}
+          onBack={goHome}
+        />
+      )}
       {view.name === "list" && active && (
         <WordList set={active} progress={data.cards} rate={data.settings.rate} onBack={goHome} />
+      )}
+      {view.name === "lessons" && (
+        <Lessons
+          sets={sets}
+          activeId={active?.id}
+          progress={data.cards}
+          today={today}
+          focus={focus}
+          onPick={(id) => {
+            setMeta(() => ({ activeSet: id }));
+            goHome();
+          }}
+          onAddSet={() => open({ name: "add" }, "/neu")}
+          onBack={goHome}
+        />
       )}
       {view.name === "add" && <AddSet onSave={addSet} onClose={goHome} />}
       {settingsOpen && (

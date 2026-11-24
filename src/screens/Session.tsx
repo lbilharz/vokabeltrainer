@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { WeakReason } from "@shared/focus";
 import { type Step, makeStep, targetsFor } from "@shared/session";
 import { closestOf, copySlots, copyTarget, gapSlots, markDiff, rateGaps } from "@shared/copy";
 import { getCard, introduce, rate } from "@shared/srs";
@@ -18,6 +19,10 @@ interface Props {
   today: number;
   settings: Settings;
   onProgress: (itemId: string, card: CardState, introduced: boolean) => void;
+  /** Meldet jede geschriebene Antwort (Schreib-Aufgaben, kein Kennenlernen, keine Wahl). Für den Test-Fokus. */
+  onWritten: (itemId: string, kind: Step["kind"], correct: boolean) => void;
+  /** true: Gesehene Wörter werden nur frei geschrieben, auch nach einem Fehler (Generalprobe). */
+  freeWriting?: boolean;
   onDone: (stats: SessionStats) => void;
   onClose: () => void;
 }
@@ -54,7 +59,13 @@ export function Session(props: Props) {
    * Erst danach erscheint die Rückmeldung mit "Weiter". So lässt sich die Lösung nicht überklicken.
    */
   const [copying, setCopying] = useState(false);
-  const stats = useRef({ items: new Set<string>(), again: new Set<string>(), introduced: 0 });
+  const stats = useRef({
+    items: new Set<string>(),
+    again: new Set<string>(),
+    introduced: 0,
+    /** Das erste Problem je Wort. Die Reihenfolge der Einträge bleibt erhalten. */
+    weak: new Map<string, WeakReason>(),
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLElement>(null);
@@ -136,8 +147,14 @@ export function Session(props: Props) {
     stats.current.items.add(item.id);
     if (isIntro && !card.seen) stats.current.introduced++;
     if (!isIntro && !correct) stats.current.again.add(item.id);
+    if (!isIntro) {
+      // Warum das Wort wackelt: nicht gewusst, Artikel vergessen, Akzent oder Schreibweise.
+      const reason: WeakReason | null = !correct ? "unknown" : articleHint ? "article" : (near ?? null);
+      if (reason && !stats.current.weak.has(item.id)) stats.current.weak.set(item.id, reason);
+      props.onWritten(item.id, step.kind, correct);
+    }
     if (isIntro || !correct) {
-      setQueue((q) => [...q, makeStep(item, next, pool, settings.listen, Math.random)]);
+      setQueue((q) => [...q, makeStep(item, next, pool, settings.listen, Math.random, props.freeWriting)]);
     }
 
     // Abschreiben: nach dem Kennenlernen immer, sonst nach einer falschen geschriebenen Antwort.
@@ -158,7 +175,12 @@ export function Session(props: Props) {
     const nextStep = queue[pos + 1];
     if (!nextStep) {
       const s = stats.current;
-      props.onDone({ total: s.items.size, again: s.again.size, introduced: s.introduced });
+      props.onDone({
+        total: s.items.size,
+        again: s.again.size,
+        introduced: s.introduced,
+        weak: [...s.weak].map(([itemId, reason]) => ({ itemId, reason })),
+      });
       return;
     }
     // Der Ton muss noch im Klick starten, nicht erst nach dem Neuzeichnen.

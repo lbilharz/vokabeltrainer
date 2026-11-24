@@ -1,3 +1,4 @@
+import type { Focus } from "@shared/focus";
 import { type SyncState, emptySync } from "@shared/sync";
 import type { Progress, SetDoc } from "@shared/types";
 
@@ -17,6 +18,12 @@ export interface Meta {
   activeSet: string;
   /** Wie viele neue Karten "Heute" an diesem Tag schon gezeigt hat. */
   newLog: { day: number; count: number };
+  /**
+   * Der Test-Fokus. Fehlt er oder ist null, gibt es keinen.
+   * Ein Gerät, das ihn nicht kennt, lässt das Feld einfach weg. Dann bleibt der lokale Stand.
+   * Null beendet den Fokus auf allen Geräten.
+   */
+  focus?: Focus | null;
 }
 
 export interface Persisted extends Meta {
@@ -49,7 +56,17 @@ function fresh(): Persisted {
 }
 
 export function metaOf(data: Persisted): Meta {
-  return { settings: data.settings, activeSet: data.activeSet, newLog: data.newLog };
+  return { settings: data.settings, activeSet: data.activeSet, newLog: data.newLog, focus: data.focus ?? null };
+}
+
+/** Prüft einen Fokus aus dem Speicher oder vom Server. Kaputtes gilt als "kein Fokus". */
+function parseFocus(raw: unknown): Focus | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Partial<Focus>;
+  if (typeof value.setId !== "string" || !value.setId) return null;
+  if (typeof value.day !== "number" || !Number.isInteger(value.day)) return null;
+  const sure = Array.isArray(value.sure) ? value.sure.filter((id): id is string => typeof id === "string") : [];
+  return { setId: value.setId, day: value.day, sure: sure.slice(0, 2000) };
 }
 
 /** Übernimmt einen Meta-Block, der vom Server oder aus dem Speicher kommt. Unbekanntes fällt weg. */
@@ -67,6 +84,13 @@ export function withMeta(data: Persisted, raw: unknown): Persisted {
   if (typeof meta.activeSet === "string") next.activeSet = meta.activeSet;
   if (meta.newLog && Number.isFinite(meta.newLog.day) && Number.isFinite(meta.newLog.count)) {
     next.newLog = { day: meta.newLog.day, count: meta.newLog.count };
+  }
+  // Fehlt das Feld, bleibt der lokale Fokus. Nur ein ausdrückliches null beendet ihn.
+  if (meta.focus === null) delete next.focus;
+  else if (meta.focus !== undefined) {
+    const focus = parseFocus(meta.focus);
+    if (focus) next.focus = focus;
+    else delete next.focus;
   }
   return next;
 }

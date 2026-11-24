@@ -1,4 +1,5 @@
 import { type ChangeEvent, useRef, useState } from "react";
+import { defaultLessonName } from "@shared/dates";
 import type { RawItem } from "@shared/types";
 import { Icon } from "../components/Icon";
 import { type CheckKind, type ExtractedItem, checkItems, extractPhoto } from "../lib/account";
@@ -143,11 +144,11 @@ export function AddSet({ onSave, onClose }: Props) {
   const valid = rows.filter((row) => row.fr.trim() && row.de.trim());
   const toCheck = rows.filter((row) => row.check).length;
 
-  // Der Abgleich nimmt kein größeres Set an. Was darüber liegt, wird nicht übernommen.
+  // Der Abgleich nimmt keine größere Lektion an. Was darüber liegt, wird nicht übernommen.
   const kept = valid.slice(0, LIMITS.MAX_ITEMS_PER_SET);
 
   const save = () => {
-    const name = label.trim().slice(0, LIMITS.MAX_LABEL_CHARS).trim() || "Neue Vokabeln";
+    const name = label.trim().slice(0, LIMITS.MAX_LABEL_CHARS).trim() || defaultLessonName(Date.now());
     if (kept.length === 0) return;
     const cut = (text: string | null | undefined, max: number) => (text ?? "").trim().slice(0, max).trim();
     onSave(
@@ -155,7 +156,7 @@ export function AddSet({ onSave, onClose }: Props) {
       kept.map((row) => {
         const note = cut(row.n, LIMITS.MAX_NOTE_CHARS);
         return {
-          // Ohne Überschrift bleibt der Abschnitt leer. Der Name des Sets steht nur am Set.
+          // Ohne Überschrift bleibt der Abschnitt leer. Der Name der Lektion steht nur am Set.
           c: cut(row.c, LIMITS.MAX_HEADING_CHARS),
           fr: cut(row.fr, LIMITS.MAX_WORD_CHARS),
           de: cut(row.de, LIMITS.MAX_WORD_CHARS),
@@ -251,7 +252,7 @@ export function AddSet({ onSave, onClose }: Props) {
         )}
 
         <div className="form-field">
-          <label htmlFor="setname">Name des Sets</label>
+          <label htmlFor="setname">Name der Lektion</label>
           <input
             id="setname"
             type="text"
@@ -305,8 +306,8 @@ export function AddSet({ onSave, onClose }: Props) {
           </div>
           {valid.length > kept.length && (
             <p className="answer-hint" role="status">
-              Ein Set fasst höchstens {LIMITS.MAX_ITEMS_PER_SET} Vokabeln. Die übrigen {valid.length - kept.length} werden
-              nicht übernommen. Lege dafür ein zweites Set an.
+              Eine Lektion fasst höchstens {LIMITS.MAX_ITEMS_PER_SET} Vokabeln. Die übrigen {valid.length - kept.length} werden
+              nicht übernommen. Lege dafür eine zweite Lektion an.
             </p>
           )}
           <button className={`btn primary ${kept.length === 0 ? "waiting" : ""}`} onClick={save}>

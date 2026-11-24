@@ -242,26 +242,157 @@ describe("planToday", () => {
     expect(plan.dueIds).toHaveLength(REVIEW_LIMIT);
     expect(plan.dueTotal).toBe(15);
   });
-  it("nimmt neue Karten nur aus dem aktiven Set, in Reihenfolge und nur ungesehene", () => {
-    const progress: Progress = { "b:0": card(1, today, false), "a:0": card(1, 200), "a:2": card(2, 200) };
-    const plan = planToday(sets, "a", progress, today, 3);
+  it("nimmt neue Karten ohne Rückstand nur aus der aktuellen Lektion, in Reihenfolge und nur ungesehene", () => {
+    const progress: Progress = { "a:0": card(1, 200), "a:2": card(2, 200) };
+    const plan = planToday([setA], "a", progress, today, 3);
     expect(plan.newIds).toEqual(["a:1", "a:3", "a:4"]);
-    const planB = planToday(sets, "b", progress, today, 2);
-    expect(planB.newIds).toEqual(["b:0", "b:1"]);
+    expect(plan.newFromActive).toBe(3);
+    expect(plan.newFromBacklog).toBe(0);
   });
-  it("kappt neue Karten bei min(newLeft, NEW_PER_ROUND)", () => {
-    expect(planToday(sets, "a", {}, today, 2).newIds).toHaveLength(2);
+  it("reserviert einen Platz für den Rückstand und gibt die Herkunft an", () => {
+    const progress: Progress = { "a:0": card(1, 200), "b:0": card(1, 200) };
+    const plan = planToday(sets, "a", progress, today, 100);
+    // 4 aus der aktuellen Lektion, dann 1 aus dem Rückstand (b, in Buchreihenfolge ohne b:0).
+    expect(plan.newIds).toEqual(["a:1", "a:2", "a:3", "a:4", "b:1"]);
+    expect(plan.newIds).toHaveLength(NEW_PER_ROUND);
+    expect(plan.newFromActive).toBe(NEW_PER_ROUND - 1);
+    expect(plan.newFromBacklog).toBe(1);
+  });
+  it("beginnt den Rückstand bei der ältesten Lektion", () => {
+    // sets steht neueste zuerst: a ist neu, c ist am ältesten.
+    const setC: SetItems = { id: "c", items: mk("c", 3) };
+    const plan = planToday([setA, setB, setC], "a", {}, today, 5);
+    expect(plan.newIds).toEqual(["a:0", "a:1", "a:2", "a:3", "c:0"]);
+    // Ist c fertig, kommt b dran.
+    const done: Progress = { "c:0": card(1, 200), "c:1": card(1, 200), "c:2": card(1, 200) };
+    expect(planToday([setA, setB, setC], "a", done, today, 5).newIds).toEqual(["a:0", "a:1", "a:2", "a:3", "b:0"]);
+  });
+  it("füllt mit der aktuellen Lektion auf, wenn der Rückstand klein ist", () => {
+    const small: SetItems = { id: "s", items: mk("s", 1) };
+    const plan = planToday([setA, small], "a", {}, today, 5);
+    expect(plan.newIds).toEqual(["a:0", "a:1", "a:2", "a:3", "s:0"]);
+    expect(plan.newFromActive).toBe(4);
+    expect(plan.newFromBacklog).toBe(1);
+    // Kein Rückstand mehr nach s:0: die fünfte Karte der aktuellen Lektion rückt nach.
+    const progress: Progress = { "s:0": card(1, 200) };
+    const noBacklog = planToday([setA, small], "a", progress, today, 5);
+    expect(noBacklog.newIds).toEqual(["a:0", "a:1", "a:2", "a:3", "a:4"]);
+    expect(noBacklog.newFromBacklog).toBe(0);
+  });
+  it("füllt mit dem Rückstand auf, wenn die aktuelle Lektion fast fertig ist", () => {
+    const few: SetItems = { id: "f", items: mk("f", 2) };
+    const plan = planToday([few, setB], "f", {}, today, 5);
+    expect(plan.newIds).toEqual(["f:0", "f:1", "b:0", "b:1", "b:2"]);
+    expect(plan.newFromActive).toBe(2);
+    expect(plan.newFromBacklog).toBe(3);
+  });
+  it("nimmt nur aus dem Rückstand, wenn die aktuelle Lektion fertig ist", () => {
+    const progress: Progress = {};
+    for (const item of setA.items) progress[item.id] = card(1, 200);
+    const plan = planToday(sets, "a", progress, today, 5);
+    expect(plan.newIds).toEqual(["b:0", "b:1", "b:2", "b:3", "b:4"]);
+    expect(plan.newFromActive).toBe(0);
+    expect(plan.newFromBacklog).toBe(5);
+  });
+  it("hält die Grenze auch mit Rückstand ein", () => {
+    expect(planToday(sets, "a", {}, today, 2).newIds).toEqual(["a:0", "b:0"]);
+    expect(planToday(sets, "a", {}, today, 1).newIds).toEqual(["b:0"]);
     expect(planToday(sets, "a", {}, today, 100).newIds).toHaveLength(NEW_PER_ROUND);
   });
-  it("gibt bei newLeft 0 oder negativ keine neuen Karten", () => {
-    expect(planToday(sets, "a", {}, today, 0).newIds).toEqual([]);
-    expect(planToday(sets, "a", {}, today, -3).newIds).toEqual([]);
+  it("kappt neue Karten bei min(newLeft, NEW_PER_ROUND)", () => {
+    expect(planToday([setA], "a", {}, today, 2).newIds).toHaveLength(2);
+    expect(planToday([setA], "a", {}, today, 100).newIds).toHaveLength(NEW_PER_ROUND);
   });
-  it("gibt bei unbekanntem activeSetId keine neuen Karten", () => {
+  it("gibt bei newLeft 0 oder negativ keine neuen Karten", () => {
+    for (const left of [0, -3]) {
+      const plan = planToday(sets, "a", {}, today, left);
+      expect(plan.newIds).toEqual([]);
+      expect(plan.newFromActive).toBe(0);
+      expect(plan.newFromBacklog).toBe(0);
+    }
+  });
+  it("gibt bei unbekannter aktueller Lektion keine neuen Karten", () => {
     const plan = planToday(sets, "gibt-es-nicht", {}, today, 5);
     expect(plan.newIds).toEqual([]);
     expect(plan.dueIds).toEqual([]);
     expect(plan.dueTotal).toBe(0);
+  });
+});
+
+describe("planToday mit Test-Fokus", () => {
+  const today = 100;
+  const setA: SetItems = { id: "a", items: mk("a", 12) };
+  const setB: SetItems = { id: "b", items: mk("b", 12) };
+  const setC: SetItems = { id: "c", items: mk("c", 12) };
+  const sets = [setA, setB, setC];
+
+  it("nimmt neue Karten nur aus der Fokus-Lektion, auch wenn sie nicht aktuell ist", () => {
+    const plan = planToday(sets, "a", {}, today, 5, { setId: "c", day: today + 3, newToday: 0 });
+    expect(plan.forTest).toBe(true);
+    expect(plan.newIds).toEqual(["c:0", "c:1", "c:2", "c:3"]);
+    expect(plan.newFromBacklog).toBe(0);
+  });
+  it("rechnet aufgerundet: ungesehene geteilt durch die Tage bis zum Test", () => {
+    const plan = planToday(sets, "a", {}, today, 5, { setId: "a", day: today + 4, newToday: 0 });
+    expect(plan.newIds).toHaveLength(3);
+    const plan2 = planToday(sets, "a", {}, today, 5, { setId: "a", day: today + 2, newToday: 0 });
+    expect(plan2.newIds).toHaveLength(6);
+  });
+  it("nimmt mindestens 3 und höchstens 12 neue Karten", () => {
+    const small = { id: "s", items: mk("s", 20) };
+    expect(planToday([small], "s", {}, today, 5, { setId: "s", day: today + 30, newToday: 0 }).newIds).toHaveLength(3);
+    const big = { id: "g", items: mk("g", 40) };
+    expect(planToday([big], "g", {}, today, 5, { setId: "g", day: today + 1, newToday: 0 }).newIds).toHaveLength(12);
+  });
+  it("nimmt am Testtag so viele, wie das Limit erlaubt", () => {
+    const plan = planToday(sets, "a", {}, today, 5, { setId: "a", day: today, newToday: 0 });
+    expect(plan.newIds).toHaveLength(12);
+  });
+  it("ersetzt NEW_PER_DAY: newLeft spielt keine Rolle", () => {
+    const plan = planToday(sets, "a", {}, today, 0, { setId: "a", day: today + 1, newToday: 0 });
+    expect(plan.newIds).toHaveLength(12);
+  });
+  it("zieht die heute schon gezeigten Karten ab", () => {
+    // 12 ungesehen, 3 Tage: 4 pro Tag. 4 sind heute schon gezeigt und gesehen.
+    const progress: Progress = {
+      "a:0": card(1, today),
+      "a:1": card(1, today),
+      "a:2": card(1, today),
+      "a:3": card(1, today),
+    };
+    const done = planToday(sets, "a", progress, today, 5, { setId: "a", day: today + 3, newToday: 4 });
+    expect(done.newIds).toEqual([]);
+    const some = planToday(sets, "a", progress, today, 5, { setId: "a", day: today + 3, newToday: 2 });
+    expect(some.newIds).toHaveLength(2);
+  });
+  it("lässt Wiederholungen aus allen Lektionen", () => {
+    const progress: Progress = { "b:0": card(2, 98), "a:0": card(1, 99) };
+    const plan = planToday(sets, "a", progress, today, 5, { setId: "c", day: today + 3, newToday: 0 });
+    expect(plan.dueIds).toEqual(["b:0", "a:0"]);
+  });
+  it("plant ohne Fokus-Lektion wie bisher", () => {
+    const plan = planToday(sets, "a", {}, today, 5, { setId: "fehlt", day: today + 3, newToday: 0 });
+    expect(plan.forTest).toBe(false);
+    expect(plan.newIds).toHaveLength(5);
+  });
+  it("gibt ohne ungesehene Wörter keine neuen Karten", () => {
+    const progress: Progress = Object.fromEntries(setA.items.map((i) => [i.id, card(1, today + 5)]));
+    const plan = planToday(sets, "a", progress, today, 5, { setId: "a", day: today + 3, newToday: 0 });
+    expect(plan.newIds).toEqual([]);
+  });
+});
+
+describe("makeStep mit freiem Schreiben", () => {
+  const items = mk("a", 6);
+  it("fragt gesehene Wörter nur frei, auch bei Hör-Aufgaben und niedriger Box", () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const step = makeStep(items[0]!, card(1, 100), items, true, seeded(seed), true);
+      expect(step).toEqual({ itemId: items[0]!.id, kind: "type" });
+    }
+  });
+  it("beginnt neue Wörter mit dem Kennenlernen", () => {
+    const step = makeStep(items[0]!, card(1, 100, false), items, true, seeded(1), true);
+    expect(step.kind).toBe("intro");
   });
 });
 

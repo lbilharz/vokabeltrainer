@@ -10,7 +10,7 @@ interface Props {
   user: User;
   syncStatus: SyncStatus;
   settings: SettingsData;
-  /** null, wenn das Konto noch kein Set hat. */
+  /** Name der aktuellen Lektion. null, wenn das Konto noch keine hat. */
   setLabel: string | null;
   onDeleteSet: () => void;
   onChange: (settings: SettingsData) => void;
@@ -275,13 +275,13 @@ export function Settings(props: Props) {
             <button
               className="btn danger"
               onClick={() => {
-                if (confirm(`Das Set „${setLabel}“ wirklich löschen? Die Vokabeln sind dann weg.`)) {
+                if (confirm(`Die Lektion „${setLabel}“ wirklich löschen? Die Vokabeln sind dann weg.`)) {
                   props.onDeleteSet();
                   onClose();
                 }
               }}
             >
-              Set löschen
+              Lektion löschen
             </button>
           </div>
         )}
