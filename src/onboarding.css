@@ -1,0 +1,171 @@
+/* Erster Start: Willkommen, geführter Anfang und Tipp-Karte. */
+
+.points,
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.points li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.point-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--rose-50);
+  color: var(--rose-dark);
+}
+
+.parents {
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.parents summary {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.parents ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0 16px 16px 34px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.field-hint {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.first-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.first-steps h2 {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.step-body h3 {
+  margin: 4px 0 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.step-body p {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.photo-tips {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.install-hint {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--green-50);
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tip-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 52px 6px 16px;
+  border: 2px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.tip-card p {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tip-card strong {
+  color: var(--ink);
+}
+
+.tip-card .icon-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.tip-card .text-btn {
+  align-self: flex-start;
+  color: var(--rose-dark);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parents summary,
+  .tip-card .icon-btn {
+    transition: none;
+  }
+}

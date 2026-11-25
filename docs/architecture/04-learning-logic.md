@@ -83,3 +83,16 @@ The bar shows practised words light and sitting words dark.
 - A streak of days.
 - A key row for accents.
 - A form for own sentences. Old own entries were migrated into the template "Sätze".
+
+## Small joys (`shared/cheer.ts`)
+
+A round that goes well gets short feedback. The rules are pure functions with tests. `src/screens/Session.tsx` and `src/screens/Done.tsx` only show the result.
+
+- **Run:** right answers at the first try, one after another. The "Kennenlernen" step does not count in either direction. An answer after a hint ends the run.
+- **Lines:** only at 3, 5, 10, 15, 20 and then every 10.
+- **"Das sitzt jetzt.":** when an answer moves a card from below box 4 to box 4 or higher.
+- **End screen:** "Fehlerfrei" when no card was wrong and the round had at least three cards.
+
+**Decision:** No sound, no extra tap, nothing after a wrong answer. Every effect ends within about a second.
+**Reason:** The audience is teenagers. Feedback that slows practice down or sounds childish would be switched off in the head.
+All movement sits behind `prefers-reduced-motion`. The styles are in `src/celebrate.css`.

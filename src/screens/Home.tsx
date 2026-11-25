@@ -15,7 +15,9 @@ import { type Station, buildStations, stationStatuses } from "@shared/path";
 import type { TodayPlan } from "@shared/session";
 import { getCard, isMastered } from "@shared/srs";
 import type { Progress } from "@shared/types";
+import { FirstSteps } from "../components/FirstSteps";
 import { Icon } from "../components/Icon";
+import { TipCard } from "../components/TipCard";
 import type { SetView } from "../data/sets";
 
 interface Props {
@@ -25,6 +27,9 @@ interface Props {
   /** true, solange der erste Abgleich läuft und noch nichts zu zeigen ist. */
   loading: boolean;
   onAddSet: () => void;
+  /** Legt die Probe-Lektion an. */
+  onAddSample: () => void;
+  userId: string;
   onRenameSet: (label: string) => void;
   progress: Progress;
   today: number;
@@ -91,14 +96,7 @@ export function Home(props: Props) {
             Einen Moment …
           </p>
         ) : (
-          <section className="empty">
-            <h2>Noch keine Vokabeln</h2>
-            <p className="lead">Fotografiere die Vokabelseite aus deinem Buch. Dann geht es los.</p>
-            <button className="btn primary" onClick={props.onAddSet}>
-              <Icon name="camera" size={24} stroke={2.2} />
-              Vokabeln fotografieren
-            </button>
-          </section>
+          <FirstSteps onAddSet={props.onAddSet} onAddSample={props.onAddSample} />
         )}
       </main>
     );
@@ -221,6 +219,8 @@ export function Home(props: Props) {
         </div>
         <p className="set-progress">{vocabularyLine(vocabulary)}</p>
       </section>
+
+      <TipCard userId={props.userId} onOpenSettings={props.onOpenSettings} />
 
       <div className="section-head">
         <h2>Aktuelle Lektion</h2>

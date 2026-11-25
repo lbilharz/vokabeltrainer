@@ -1,0 +1,173 @@
+/* Kleine Freuden beim Üben. Alles kurz, nichts blockiert "Weiter". */
+
+/* Der Chip und die Zeile stehen immer da. Die Bewegung gibt es nur ohne Reduzierung. */
+.sheet-title .cheer-chip {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--green-dark);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cheer-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green-dark);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* Ein Wort, das jetzt sitzt, bekommt einen Strich darunter. */
+.solution-fr.cheer-set {
+  display: inline-block;
+  position: relative;
+}
+
+.solution-fr.cheer-set::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--green);
+  transform-origin: left center;
+}
+
+.cheer-extras {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cheer-mark {
+  position: relative;
+  display: flex;
+}
+
+.confetti {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.confetti i {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--rose);
+  opacity: 0;
+}
+
+.confetti i:nth-child(3n + 1) {
+  background: var(--green);
+}
+
+.confetti i:nth-child(3n + 2) {
+  background: var(--rose-ring);
+}
+
+.confetti i:nth-child(5n) {
+  background: var(--green-dark);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet-mark.cheer-pop {
+    animation: cheer-pop 0.25s ease-out;
+  }
+
+  .sheet-title .cheer-chip,
+  .cheer-line {
+    animation: cheer-in 0.3s ease-out both;
+  }
+
+  .cheer-line {
+    animation-delay: 0.08s;
+  }
+
+  .solution-fr.cheer-set::after {
+    animation: cheer-draw 0.42s ease-out 0.2s both;
+  }
+
+  .done-mark.cheer-pop {
+    animation: cheer-pop 0.45s ease-out both;
+  }
+
+  .cheer-extras p {
+    animation: cheer-in 0.35s ease-out both;
+  }
+
+  .cheer-extras p:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+
+  .confetti i {
+    animation: cheer-burst 1.2s cubic-bezier(0.15, 0.7, 0.3, 1) var(--d, 0s) 1 both;
+  }
+
+  .session-top .bar-fill {
+    transition: width 0.4s ease-out;
+  }
+}
+
+@keyframes cheer-pop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes cheer-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes cheer-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cheer-burst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(0.6);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), calc(var(--dy) + 36px)) rotate(var(--rot)) scale(1);
+  }
+}

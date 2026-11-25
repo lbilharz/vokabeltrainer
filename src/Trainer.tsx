@@ -33,6 +33,7 @@ import { Result } from "./screens/Result";
 import { Session } from "./screens/Session";
 import { TestDay } from "./screens/TestDay";
 import { WordList } from "./screens/WordList";
+import { SAMPLE_ITEMS, SAMPLE_LABEL } from "./data/sample";
 import { loadNewerVersion, newerVersion, onNewerVersion } from "./lib/version";
 
 type View =
@@ -428,6 +429,8 @@ export function Trainer({ user, onSignedOut }: Props) {
           onStartTest={startTest}
           loading={!setsLoaded && syncStatus === "running"}
           onAddSet={() => open({ name: "add" }, "/neu")}
+          onAddSample={() => addSet(SAMPLE_LABEL, SAMPLE_ITEMS)}
+          userId={user.id}
           onRenameSet={renameActive}
           onStartToday={startToday}
           onStartStation={startStation}

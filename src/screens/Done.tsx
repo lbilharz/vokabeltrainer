@@ -1,5 +1,8 @@
 import type { WeakReason } from "@shared/focus";
+import { doneHeadline } from "@shared/cheer";
+import { Confetti } from "../components/Confetti";
 import { Icon } from "../components/Icon";
+import "../celebrate.css";
 
 /** Ein Wort, an dem in dieser Runde etwas nicht stimmte. */
 export interface WeakWord {
@@ -17,6 +20,10 @@ export interface SessionStats {
   introduced: number;
   /** Wörter mit Schwäche, in der Reihenfolge des ersten Problems. Die Generalprobe zeigt sie an. */
   weak: WeakWord[];
+  /** Längste Serie richtiger Antworten im ersten Versuch. */
+  bestStreak: number;
+  /** Wörter, die in dieser Runde Box "sitzt" erreicht haben. */
+  mastered: number;
 }
 
 interface Props {
@@ -27,15 +34,20 @@ interface Props {
 }
 
 export function Done({ stats, unit, dueTomorrow, onHome }: Props) {
+  const head = doneHeadline(stats);
+  const flawless = head.title === "Fehlerfrei";
   return (
     <main className="screen done">
       <div className="done-body">
-        <div className="done-mark">
-          <Icon name="check" size={64} stroke={2.8} />
+        <div className="cheer-mark">
+          {flawless && <Confetti />}
+          <div className="done-mark cheer-pop">
+            <Icon name="check" size={64} stroke={2.8} />
+          </div>
         </div>
         <div className="done-title">
-          <h1>Geschafft</h1>
-          <p>{stats.total === 1 ? "1 Karte ist durch." : `${stats.total} Karten sind durch.`}</p>
+          <h1>{head.title}</h1>
+          <p>{head.line}</p>
         </div>
         <div className="tiles">
           <div className="tile good">
@@ -51,6 +63,14 @@ export function Done({ stats, unit, dueTomorrow, onHome }: Props) {
             <span>{stats.introduced === 1 ? `neues ${unit[0]}` : `neue ${unit[1]}`}</span>
           </div>
         </div>
+        {(stats.mastered > 0 || stats.bestStreak >= 3) && (
+          <div className="cheer-extras">
+            {stats.mastered > 0 && (
+              <p>{stats.mastered === 1 ? "1 Wort sitzt jetzt." : `${stats.mastered} Wörter sitzen jetzt.`}</p>
+            )}
+            {stats.bestStreak >= 3 && <p>Längste Serie: {stats.bestStreak}</p>}
+          </div>
+        )}
         {dueTomorrow > 0 && (
           <p className="done-next">
             Morgen {dueTomorrow === 1 ? "wartet 1 Karte" : `warten ${dueTomorrow} Karten`} auf dich.

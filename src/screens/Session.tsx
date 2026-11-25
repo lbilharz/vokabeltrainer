@@ -3,6 +3,7 @@ import type { WeakReason } from "@shared/focus";
 import { type Step, makeStep, targetsFor } from "@shared/session";
 import { closestOf, copySlots, copyTarget, gapSlots, markDiff, rateGaps } from "@shared/copy";
 import { getCard, introduce, rate } from "@shared/srs";
+import { justMastered, streakAfter, streakLine } from "@shared/cheer";
 import { type Near, ruleTyped } from "@shared/answer";
 import { LIMITS } from "@shared/limits";
 import { norm } from "@shared/text";
@@ -13,6 +14,7 @@ import { judgeAnswer } from "../lib/account";
 import { speak } from "../lib/audio";
 import type { Settings } from "../lib/store";
 import type { SessionStats } from "./Done";
+import "../celebrate.css";
 
 interface Props {
   steps: Step[];
@@ -70,6 +72,10 @@ export function Session(props: Props) {
     near?: Near;
     also?: boolean;
     note?: string;
+    /** Kurze Zeile bei einer Serie (3, 5, 10 ...). */
+    streak?: string;
+    /** Diese Antwort hat das Wort auf "sitzt" gebracht. */
+    mastered?: boolean;
   } | null>(null);
   /** true, sobald der Hinweis auf den fehlenden Artikel gezeigt wurde. Danach zählt der Versuch. */
   const [articleHint, setArticleHint] = useState(false);
@@ -95,6 +101,11 @@ export function Session(props: Props) {
     introduced: 0,
     /** Das erste Problem je Wort. Die Reihenfolge der Einträge bleibt erhalten. */
     weak: new Map<string, WeakReason>(),
+    /** Serie richtiger Antworten im ersten Versuch, aktuell und beste der Runde. */
+    streak: 0,
+    bestStreak: 0,
+    /** Wörter, die in dieser Runde auf "sitzt" gekommen sind. */
+    mastered: new Set<string>(),
   });
   const inputRef = useRef<HTMLInputElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
@@ -225,8 +236,19 @@ export function Session(props: Props) {
     // Ohne Abschreiben die Tastatur schliessen, sonst verdeckt sie die Rückmeldung.
     if (!needsCopy) closeKeyboard();
     if (step.kind === "type" || step.kind === "gap") say();
+
+    // Kleine Freuden: Serie und "sitzt jetzt". Die Bewertung selbst bleibt unberührt.
+    // Mit Hinweis (Artikel, andere Form) war es nicht der erste Versuch.
+    const firstTry = correct && !articleHint && formHint === null;
+    const st = stats.current;
+    st.streak = streakAfter(st.streak, firstTry, !isIntro);
+    st.bestStreak = Math.max(st.bestStreak, st.streak);
+    const streak = firstTry && !isIntro ? (streakLine(st.streak) ?? undefined) : undefined;
+    const mastered = !isIntro && justMastered(card, next);
+    if (mastered) st.mastered.add(item.id);
+
     setCopying(needsCopy);
-    setResult({ correct, near, also: judged?.also, note: judged?.note });
+    setResult({ correct, near, also: judged?.also, note: judged?.note, streak, mastered });
   };
 
   const copied = () => {
@@ -243,6 +265,8 @@ export function Session(props: Props) {
         again: s.again.size,
         introduced: s.introduced,
         weak: [...s.weak].map(([itemId, reason]) => ({ itemId, reason })),
+        bestStreak: s.bestStreak,
+        mastered: s.mastered.size,
       });
       return;
     }
@@ -421,11 +445,18 @@ export function Session(props: Props) {
         >
           <div className="sheet-body">
           <div className="sheet-title">
-            <span className="sheet-mark">
+            <span className={`sheet-mark ${result.correct ? "cheer-pop" : ""}`}>
               <Icon name={result.correct ? "check" : "x"} size={20} stroke={3.2} />
             </span>
             <h2>{result.also ? "Auch richtig" : result.near ? "Fast richtig" : plainTitle}</h2>
+            {result.streak && <span className="cheer-chip">{result.streak}</span>}
           </div>
+          {result.mastered && (
+            <p className="cheer-line">
+              <Icon name="check" size={16} stroke={3} />
+              Das sitzt jetzt.
+            </p>
+          )}
           {result.note && <p className="sheet-note">{result.note}</p>}
           {result.near &&
             (step.kind === "gap" ? (
@@ -437,7 +468,7 @@ export function Session(props: Props) {
             ))}
           <div className="solution">
             <div className="solution-text">
-              <div className="solution-fr" lang="fr">
+              <div className={`solution-fr ${result.mastered ? "cheer-set" : ""}`} lang="fr">
                 {nearMarks
                   ? nearMarks.map((mark, index) => (mark.miss ? <mark key={index}>{mark.ch}</mark> : mark.ch))
                   : item.fr}

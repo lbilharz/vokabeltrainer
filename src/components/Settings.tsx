@@ -4,6 +4,7 @@ import { type Device, type User, addThisDevice, listDevices, logout, removeDevic
 import { DEFAULT_TIME, type PushState, disablePush, enablePush, readPushState } from "../lib/push";
 import type { Settings as SettingsData } from "../lib/store";
 import { checkForUpdate, versionDate } from "../lib/version";
+import { isInstalled } from "../lib/install";
 import { Icon } from "./Icon";
 
 interface Props {
@@ -76,10 +77,7 @@ export function Settings(props: Props) {
       setPush(await readPushState());
     }
   };
-  // Vom Home-Bildschirm gestartet läuft die App ohne Adressleiste. Dann braucht es den Hinweis nicht.
-  const installed =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const installed = isInstalled();
 
   const reload = () => {
     listDevices()

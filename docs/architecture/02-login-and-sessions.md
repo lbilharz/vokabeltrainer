@@ -50,3 +50,10 @@ The server part comes from the own project `oh-snap`. End-to-end encryption and 
 ## Open work
 
 See `docs/plan/open-security-work.md` and `docs/plan/lost-passkey.md`.
+
+## First steps for a new person
+
+- The welcome screen says what the app does and has a block for parents (`src/screens/Welcome.tsx`).
+- The link `/start` opens the account form directly. This is the link to hand to an invited family, together with the invite word. The invite word is never part of a link.
+- An empty account sees three steps and can add a sample lesson of ten self-written words (`src/components/FirstSteps.tsx`, `src/data/sample.ts`).
+- After the first lesson a tip card explains the home screen once (`src/components/TipCard.tsx`). Its "closed" state is kept on the device only.

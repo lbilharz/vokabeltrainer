@@ -1,4 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
+import "../onboarding.css";
+import { Icon } from "../components/Icon";
 import { type AuthState, type User, login, register } from "../lib/account";
 import { ApiError } from "../lib/api";
 import { readCapabilities } from "../lib/passkey";
@@ -14,7 +16,8 @@ function message(error: unknown): string {
 
 export function Welcome({ auth, onSignedIn }: Props) {
   // Solange es noch kein Konto gibt, ist "Konto anlegen" der einzige sinnvolle Weg.
-  const [creating, setCreating] = useState(auth.registrationOpen);
+  // Der Link vok.cards/start führt Eingeladene direkt dorthin.
+  const [creating, setCreating] = useState(auth.registrationOpen || location.pathname === "/start");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,6 +59,27 @@ export function Welcome({ auth, onSignedIn }: Props) {
         <h1>Bonjour</h1>
         <p className="lead">Hier übst du deine Vokabeln. Dein Fortschritt ist auf jedem Gerät dabei.</p>
       </div>
+
+      <ul className="points">
+        <li>
+          <span className="point-icon">
+            <Icon name="camera" size={24} stroke={2.2} />
+          </span>
+          Fotografiere die Vokabelseite aus deinem Schulbuch.
+        </li>
+        <li>
+          <span className="point-icon">
+            <Icon name="list" size={24} stroke={2.2} />
+          </span>
+          Die App liest die Wörter für dich.
+        </li>
+        <li>
+          <span className="point-icon">
+            <Icon name="calendar" size={24} stroke={2.2} />
+          </span>
+          Übe jeden Tag ein paar Minuten. Die App merkt sich, was du schon kannst.
+        </li>
+      </ul>
 
       {!supported && (
         <p className="notice" role="alert">
@@ -102,6 +126,7 @@ export function Welcome({ auth, onSignedIn }: Props) {
                   {codeError}
                 </p>
               )}
+              <p className="field-hint">Dieses Wort hat dir die Person gegeben, die dich eingeladen hat.</p>
             </div>
           )}
           <button className="btn primary" type="submit" aria-busy={busy}>
@@ -123,6 +148,21 @@ export function Welcome({ auth, onSignedIn }: Props) {
           </button>
         </div>
       )}
+
+      <details className="parents">
+        <summary>Für Eltern</summary>
+        <ul>
+          <li>Die App kostet nichts. Jedes Kind legt ein eigenes Konto mit eigenem Namen an.</li>
+          <li>Die Anmeldung geht mit Face ID, Touch ID oder dem Code des Geräts. Es gibt kein Passwort.</li>
+          <li>Der Server speichert den Namen, die Vokabeln und den Lernfortschritt.</li>
+          <li>Fotos werden nur gelesen und nicht gespeichert.</li>
+          <li>
+            Zum Lesen der Fotos und für die Aussprache nutzt die App Dienste von Google und ElevenLabs. Dorthin gehen
+            nur die Fotos und die Wörter, kein Name.
+          </li>
+          <li>Jedes Kind legt das Konto am besten auf dem Gerät an, das es danach benutzt.</li>
+        </ul>
+      </details>
 
       <p className="hint">
         Du meldest dich mit Face ID, Touch ID oder dem Code deines Geräts an. Ein Passwort brauchst du nicht.
