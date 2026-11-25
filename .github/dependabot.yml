@@ -1,0 +1,36 @@
+# Dependabot hält die Pakete aktuell.
+#
+# Einmal pro Woche. Kleine Updates kommen gebündelt in einem Pull Request.
+# Große Versionssprünge kommen einzeln, denn die brechen am ehesten etwas.
+#
+# GitHub liest diese Datei nur vom Hauptzweig des Repos.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "neue-oberflaeche"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    groups:
+      kleine-updates:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Die Bausteine der Prüfung auf GitHub selbst.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "neue-oberflaeche"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Berlin"
+    groups:
+      actions:
+        patterns:
+          - "*"

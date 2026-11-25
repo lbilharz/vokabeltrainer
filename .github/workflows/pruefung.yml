@@ -1,0 +1,40 @@
+# Prüft jeden Pull Request und jeden Push: Typen, Tests und Build.
+# Eingespielt wird hier nichts. Das geschieht weiter von Hand mit "npm run deploy".
+name: Prüfung
+
+on:
+  pull_request:
+  push:
+    branches:
+      - neue-oberflaeche
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pruefung-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Die Typen des Workers entstehen aus wrangler.jsonc und den Namen der Geheimnisse.
+      # Die echten Geheimnisse gibt es hier nicht. Die Beispieldatei nennt nur die Namen.
+      - run: cp .dev.vars.example .dev.vars
+      - run: npm run cf-typegen
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
