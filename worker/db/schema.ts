@@ -178,6 +178,19 @@ export const usageLog = sqliteTable(
 );
 
 /**
+ * Gemerkte Urteile des Schiedsrichters (worker/judge.ts).
+ *
+ * `key` ist der SHA-256 der drei Texte. Kein Nutzer steht darin, der Eintrag gilt für alle.
+ * `verdict` ist correct, form oder wrong.
+ */
+export const judgeCache = sqliteTable("judge_cache", {
+  key: text("key").primaryKey(),
+  verdict: text("verdict").notNull(),
+  note: text("note").notNull(),
+  createdAt: createdAt(),
+});
+
+/**
  * Web-Push-Abo eines Geräts für die tägliche Übungserinnerung.
  *
  * `hour` ist die Stunde in Berlin. `lastSentDay` ist der Berliner Kalendertag

@@ -1297,6 +1297,10 @@ button.station-row:active .station-dot {
   font-weight: 700;
 }
 
+.sheet.bad .sheet-note {
+  color: var(--rose-dark);
+}
+
 .answer input.near {
   border-color: #b07a10;
   background: #fff4d6;

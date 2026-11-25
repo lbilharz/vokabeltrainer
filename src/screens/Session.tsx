@@ -3,10 +3,12 @@ import type { WeakReason } from "@shared/focus";
 import { type Step, makeStep, targetsFor } from "@shared/session";
 import { closestOf, copySlots, copyTarget, gapSlots, markDiff, rateGaps } from "@shared/copy";
 import { getCard, introduce, rate } from "@shared/srs";
+import { anotherForm } from "@shared/forms";
 import { type Closeness, closeness, isCorrect, norm } from "@shared/text";
 import type { CardState, Item, Progress } from "@shared/types";
 import { CopyWord } from "../components/CopyWord";
 import { Icon } from "../components/Icon";
+import { judgeAnswer } from "../lib/account";
 import { speak } from "../lib/audio";
 import type { Settings } from "../lib/store";
 import type { SessionStats } from "./Done";
@@ -50,10 +52,30 @@ export function Session(props: Props) {
   const [pos, setPos] = useState(0);
   const [typed, setTyped] = useState("");
   const [choice, setChoice] = useState<string | null>(null);
-  /** near: richtig bis auf Akzente oder einen Tippfehler. Zählt als richtig, mit Hinweis. */
-  const [result, setResult] = useState<{ correct: boolean; near?: "accents" | "typo" } | null>(null);
+  /**
+   * near: richtig bis auf Akzente oder einen Tippfehler. Zählt als richtig, mit Hinweis.
+   * also: der Schiedsrichter lässt die Antwort gelten ("Auch richtig"). Sieht aus wie near.
+   * note: ein Satz des Schiedsrichters für die Rückmeldung.
+   */
+  const [result, setResult] = useState<{
+    correct: boolean;
+    near?: "accents" | "typo";
+    also?: boolean;
+    note?: string;
+  } | null>(null);
   /** true, sobald der Hinweis auf den fehlenden Artikel gezeigt wurde. Danach zählt der Versuch. */
   const [articleHint, setArticleHint] = useState(false);
+  /** Der Hinweis "richtiges Wort, andere Form". Er kommt aus den Regeln oder vom Schiedsrichter. Nur einmal je Karte. */
+  const [formHint, setFormHint] = useState<string | null>(null);
+  /** true, solange der Schiedsrichter gefragt wird. Die Knöpfe sind dann aus. */
+  const [judging, setJudging] = useState(false);
+  /** Wird beim Weitergehen und Schließen erhöht. So landet eine späte Antwort nicht auf der falschen Karte. */
+  const judgeRound = useRef(0);
+  useEffect(() => {
+    return () => {
+      judgeRound.current++;
+    };
+  }, []);
   /**
    * true, solange das Kind das Wort abschreibt. Das kommt nach dem Kennenlernen und nach einem Fehler.
    * Erst danach erscheint die Rückmeldung mit "Weiter". So lässt sich die Lösung nicht überklicken.
@@ -91,14 +113,16 @@ export function Session(props: Props) {
   const say = () => speak(item.fr, "fr", settings.rate);
   const copyText = copyTarget(item.fr);
   const sheetOpen = result !== null && !copying;
+  const hint = formHint ?? (articleHint ? "Fast richtig. Es fehlt der Artikel." : null);
   // Bei "Fast richtig" zeigt die Lösung die Stellen, die nicht stimmten.
   const nearMarks =
     result?.near && step.kind !== "gap" ? markDiff(typed, closestOf(typed, targetsFor(item, pool))) : null;
 
   const check = (giveUp = false) => {
-    if (result) return;
+    if (result || judging) return;
     let correct: boolean;
     let near: "accents" | "typo" | undefined;
+    let askJudge = false;
     if (hasChoices) {
       if (!giveUp && choice === null) return;
       correct = !giveUp && choice === item.de;
@@ -121,8 +145,43 @@ export function Session(props: Props) {
           setArticleHint(true);
           inputRef.current?.focus();
           return;
+        } else if (step.kind === "type" && close !== "article") {
+          // Das richtige Wort in einer anderen Form bekommt auch einen zweiten Versuch.
+          const form = formHint === null ? anotherForm(typed, targets, item, pool) : null;
+          if (form) {
+            setFormHint(
+              form.other
+                ? `Das ist „${form.other.de}“. Hier ist eine andere Form gefragt.`
+                : "Fast. Das Wort stimmt, aber die Form nicht. Schau noch einmal genau auf das Deutsche.",
+            );
+            inputRef.current?.focus();
+            return;
+          }
+          // Ein anderes Wort der Lektion ist einfach falsch. Dafür fragt die App nicht nach.
+          askJudge = !otherWord;
         }
       }
+    }
+
+    // Der Schiedsrichter ist ein Netzaufruf. Ohne Netz und für lange Texte bleibt es bei den Regeln.
+    const fr = item.fr.trim();
+    const answer = typed.trim();
+    if (askJudge && navigator.onLine !== false && fr.length <= 300 && item.de.length <= 300 && answer.length <= 120) {
+      const round = ++judgeRound.current;
+      setJudging(true);
+      void judgeAnswer(item.de, fr, answer).then((judgement) => {
+        if (round !== judgeRound.current) return;
+        setJudging(false);
+        if (judgement.verdict === "correct") {
+          finish(true, undefined, false, { also: true, note: judgement.note });
+        } else if (judgement.verdict === "form" && formHint === null) {
+          setFormHint(judgement.note || "Fast. Das Wort stimmt, aber die Form nicht. Schau noch einmal genau auf das Deutsche.");
+          inputRef.current?.focus();
+        } else {
+          finish(false, undefined, true, { note: judgement.note });
+        }
+      });
+      return;
     }
 
     finish(correct, near, step.kind === "intro" || (!hasChoices && !correct));
@@ -137,7 +196,12 @@ export function Session(props: Props) {
   };
 
   /** Trägt das Ergebnis ein und zeigt die Rückmeldung. copyAfter: vorher das Wort abschreiben lassen. */
-  const finish = (correct: boolean, near: "accents" | "typo" | undefined, copyAfter: boolean) => {
+  const finish = (
+    correct: boolean,
+    near: "accents" | "typo" | undefined,
+    copyAfter: boolean,
+    judged?: { also?: boolean; note?: string },
+  ) => {
     const card = getCard(props.progress, item.id, today);
     const isIntro = step.kind === "intro";
     // Eine neue Karte wird nur vorgestellt. Bewertet wird sie erst beim zweiten Mal.
@@ -163,7 +227,7 @@ export function Session(props: Props) {
     if (!needsCopy && document.activeElement instanceof HTMLElement) document.activeElement.blur();
     if (step.kind === "type" || step.kind === "gap") say();
     setCopying(needsCopy);
-    setResult({ correct, near });
+    setResult({ correct, near, also: judged?.also, note: judged?.note });
   };
 
   const copied = () => {
@@ -190,6 +254,9 @@ export function Session(props: Props) {
     setChoice(null);
     setResult(null);
     setArticleHint(false);
+    setFormHint(null);
+    judgeRound.current++;
+    setJudging(false);
     setCopying(false);
   };
 
@@ -303,11 +370,11 @@ export function Session(props: Props) {
             key={pos}
             id="answer"
             ref={inputRef}
-            className={result ? (result.near ? "near" : result.correct ? "right" : "wrong") : ""}
+            className={result ? (result.near || result.also ? "near" : result.correct ? "right" : "wrong") : ""}
             type="text"
             lang="fr"
             value={typed}
-            readOnly={result !== null}
+            readOnly={result !== null || judging}
             onChange={(event) => setTyped(event.target.value)}
             autoFocus
             autoComplete="off"
@@ -315,11 +382,11 @@ export function Session(props: Props) {
             autoCapitalize="none"
             spellCheck={false}
             enterKeyHint="done"
-            aria-describedby={articleHint && !result ? "answer-hint" : undefined}
+            aria-describedby={hint && !result ? "answer-hint" : undefined}
           />
-          {articleHint && !result && (
+          {hint && !result && (
             <p id="answer-hint" className="answer-hint" role="status">
-              Fast richtig. Es fehlt der Artikel.
+              {hint}
             </p>
           )}
         </form>
@@ -328,11 +395,15 @@ export function Session(props: Props) {
       {!result && (
         <footer className={`actions ${hasChoices ? "pinned" : ""}`}>
           {step.kind !== "gap" && (
-            <button className={`btn primary ${hasChoices && choice === null ? "waiting" : ""}`} onClick={() => check()}>
-              Prüfen
+            <button
+              className={`btn primary ${(hasChoices && choice === null) || judging ? "waiting" : ""}`}
+              disabled={judging}
+              onClick={() => check()}
+            >
+              {judging ? "Ich schaue genauer hin …" : "Prüfen"}
             </button>
           )}
-          <button className="text-btn center" onClick={() => check(true)}>
+          <button className="text-btn center" disabled={judging} onClick={() => check(true)}>
             Weiß ich nicht
           </button>
         </footer>
@@ -341,7 +412,7 @@ export function Session(props: Props) {
       {sheetOpen && result && (
         <footer
           ref={sheetRef}
-          className={`sheet ${result.near ? "near" : result.correct ? "good" : "bad"}`}
+          className={`sheet ${result.near || result.also ? "near" : result.correct ? "good" : "bad"}`}
           aria-live="polite"
         >
           <div className="sheet-body">
@@ -350,15 +421,18 @@ export function Session(props: Props) {
               <Icon name={result.correct ? "check" : "x"} size={20} stroke={3.2} />
             </span>
             <h2>
-              {result.near
-                ? "Fast richtig"
-                : result.correct
-                  ? "Richtig"
-                  : step.kind === "intro"
-                    ? "Merk dir"
-                    : "Noch nicht"}
+              {result.also
+                ? "Auch richtig"
+                : result.near
+                  ? "Fast richtig"
+                  : result.correct
+                    ? "Richtig"
+                    : step.kind === "intro"
+                      ? "Merk dir"
+                      : "Noch nicht"}
             </h2>
           </div>
+          {result.note && <p className="sheet-note">{result.note}</p>}
           {result.near &&
             (step.kind === "gap" ? (
               <p className="sheet-note">Eine Stelle hat nicht gleich gepasst. So schreibt man es:</p>

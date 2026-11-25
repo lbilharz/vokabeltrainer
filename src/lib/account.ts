@@ -185,6 +185,36 @@ export async function checkItems(items: { fr: string; de: string }[]): Promise<{
   return flags;
 }
 
+/** Das Urteil des Schiedsrichters. unknown heisst: keine Antwort, die App wertet wie ohne ihn. */
+export interface Judgement {
+  verdict: "correct" | "form" | "wrong" | "unknown";
+  /** Ein kurzer deutscher Satz. Fehlt bei unknown. */
+  note?: string;
+}
+
+/** So lange wartet das Kind höchstens auf den Schiedsrichter. */
+const JUDGE_TIMEOUT_MS = 4000;
+
+/**
+ * Fragt den Schiedsrichter, ob eine falsch bewertete Antwort doch gelten kann.
+ * Wirft nie. Bei jedem Fehler und nach 4 Sekunden kommt unknown.
+ */
+export async function judgeAnswer(de: string, fr: string, answer: string): Promise<Judgement> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), JUDGE_TIMEOUT_MS);
+  try {
+    const result = await apiPost<Partial<Judgement>>("/api/judge", { de, fr, answer }, { signal: controller.signal });
+    const verdict = result?.verdict;
+    if (verdict !== "correct" && verdict !== "form" && verdict !== "wrong") return { verdict: "unknown" };
+    const note = typeof result.note === "string" ? result.note.trim() : "";
+    return note ? { verdict, note } : { verdict };
+  } catch {
+    return { verdict: "unknown" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Was während des Lesens passiert. Damit zeigt die App echten Fortschritt. */
 export type ExtractProgress =
   /** Das Foto wird gesendet. `fraction` läuft von 0 bis 1. */

@@ -7,6 +7,7 @@ import { audio } from "./audio";
 import { auth } from "./auth";
 import { check } from "./check";
 import { extract } from "./extract";
+import { judge } from "./judge";
 import { push, runReminders } from "./push";
 import { sync } from "./sync";
 import { APP_VERSION, VERSION_HEADER } from "../shared/version";
@@ -81,6 +82,7 @@ app.use("/api/*", async (context, next) => {
 app.route("/api", sync);
 app.route("/api", extract);
 app.route("/api", check);
+app.route("/api", judge);
 app.route("/api", audio);
 app.route("/api", push);
 app.route("/api/auth", auth);

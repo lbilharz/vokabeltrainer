@@ -43,6 +43,13 @@
       "when": 1795472840826,
       "tag": "0005_usage_log",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795596287018,
+      "tag": "0006_judge_cache",
+      "breakpoints": true
     }
   ]
 }

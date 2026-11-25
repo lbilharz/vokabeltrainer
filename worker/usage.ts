@@ -16,12 +16,17 @@ export const GLOBAL_PER_DAY = {
   extract: 150,
   /** Gegenproben. Jede kostet bis zu zwei Anfragen bei Gemini. */
   check: 300,
+  /** Urteile des Schiedsrichters. Jedes ist eine kleine Anfrage bei Gemini. */
+  judge: 1500,
   /** Neue Aufnahmen bei ElevenLabs. */
   audio: 1000,
 } as const;
 
 /** So viele Gegenproben darf ein Konto am Tag auslösen. Ein Foto braucht eine. */
 export const CHECKS_PER_USER = 60;
+
+/** So viele Urteile darf ein Konto am Tag auslösen. Treffer im Speicher zählen nicht. */
+export const JUDGES_PER_USER = 150;
 
 export type UsageKind = keyof typeof GLOBAL_PER_DAY;
 

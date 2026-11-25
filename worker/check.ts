@@ -5,6 +5,7 @@ import { z } from "zod";
 import * as schema from "./db/schema";
 import { readSession } from "./session";
 import { CHECKS_PER_USER, countGlobal, countUse } from "./usage";
+import { geminiRequest } from "./prompt";
 
 export const check = new Hono<{ Bindings: Env }>();
 
@@ -34,8 +35,7 @@ Das ist KEIN Fehler und wird nicht markiert:
 
 Markiere lieber zu wenig als zu viel. Antworte nur mit den Zeilennummern der fehlerhaften Zeilen.
 
-Liste:
-`;
+Du bekommst die Liste als JSON: "zeilen" mit "nr", "fr" und "de" je Zeile. "nr" ist die Zeilennummer für deine Antwort.`;
 
 const KINDS = ["schreibweise", "passt_nicht", "verschmolzen"] as const;
 
@@ -102,11 +102,11 @@ check.post("/check", async (context) => {
     return context.json({ error: "Für heute sind es genug Gegenproben." }, 429);
   }
 
-  // Zeilenumbrüche in einem Eintrag würden die Nummerierung durcheinanderbringen.
+  // Regeln und fremder Text bleiben getrennt, siehe worker/prompt.ts.
   const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
-  const list = items.map((item, index) => `${index}: ${oneLine(item.fr)} = ${oneLine(item.de)}`).join("\n");
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: PROMPT + list }] }],
+  const body = geminiRequest({
+    rules: PROMPT,
+    data: { zeilen: items.map((item, index) => ({ nr: index, fr: oneLine(item.fr), de: oneLine(item.de) })) },
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
