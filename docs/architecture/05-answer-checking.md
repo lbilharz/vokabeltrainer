@@ -1,7 +1,7 @@
 # Answer checking
 
 A typed answer goes through several stages. The first ones are rules in the app. Only at the end does the app ask a model.
-The flow is in `check()` in `src/screens/Session.tsx`. The rules are in `shared/text.ts` and `shared/forms.ts`.
+The order of the stages is in `ruleTyped` in `shared/answer.ts`. It is a pure function with tests. It returns one of five results: empty, correct, article hint, form hint or wrong. `check()` in `src/screens/Session.tsx` only applies the result. The single rules are in `shared/text.ts` and `shared/forms.ts`.
 
 ## Stage 1: Right
 

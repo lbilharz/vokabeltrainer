@@ -50,6 +50,13 @@
       "when": 1795596287018,
       "tag": "0006_judge_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795640158809,
+      "tag": "0007_drop_old_counters",
+      "breakpoints": true
     }
   ]
 }

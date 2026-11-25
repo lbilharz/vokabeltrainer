@@ -1,3 +1,4 @@
+import { DAY_MS } from "./dates";
 import type { CardState, Progress } from "./types";
 
 // Ab dieser Box gilt eine Karte als "sitzt".
@@ -6,11 +7,10 @@ export const MAX_BOX = 8;
 // Tage bis zur nächsten Abfrage je Box.
 export const INTERVAL: Record<number, number> = { 1: 0, 2: 1, 3: 2, 4: 4, 5: 7, 6: 14, 7: 30, 8: 90 };
 
-const DAY = 86400000;
 
 // Lokaler Kalendertag als ganze Zahl.
 export function dayNumber(date: Date): number {
-  return Math.floor((date.getTime() - date.getTimezoneOffset() * 60000) / DAY);
+  return Math.floor((date.getTime() - date.getTimezoneOffset() * 60000) / DAY_MS);
 }
 
 // Gespeicherter Stand, sonst eine neue, ungesehene Karte.

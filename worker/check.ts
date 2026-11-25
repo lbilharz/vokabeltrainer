@@ -1,20 +1,22 @@
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
 import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 import * as schema from "./db/schema";
-import { readSession } from "./session";
-import { CHECKS_PER_USER, countGlobal, countUse } from "./usage";
+import { requireSession } from "./session";
+import { spend } from "./usage";
 import { geminiRequest } from "./prompt";
+import { RETRY_STATUS, answerText, geminiUrl, postGemini } from "./gemini";
+import { CHECK_KINDS } from "../shared/extract";
+import { LIMITS } from "../shared/limits";
+import { oneLine } from "../shared/text";
 
 export const check = new Hono<{ Bindings: Env }>();
 
 /** Das Modell für die Gegenprobe. Das kleinere Flash Lite übersieht verrutschte Zeilen. */
 const GEMINI_MODEL = "gemini-3.8-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const GEMINI_URL = geminiUrl(GEMINI_MODEL);
 const TIMEOUT_MS = 20_000;
 const RETRY_DELAY_MS = 1500;
-const RETRY_STATUS = [429, 500, 502, 503, 504];
 
 /**
  * Die Gegenprobe sieht kein Foto. Sie liest nur die Wortpaare und kennt die Sprache.
@@ -37,8 +39,6 @@ Markiere lieber zu wenig als zu viel. Antworte nur mit den Zeilennummern der feh
 
 Du bekommst die Liste als JSON: "zeilen" mit "nr", "fr" und "de" je Zeile. "nr" ist die Zeilennummer für deine Antwort.`;
 
-const KINDS = ["schreibweise", "passt_nicht", "verschmolzen"] as const;
-
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -46,7 +46,7 @@ const RESPONSE_SCHEMA = {
       type: "ARRAY",
       items: {
         type: "OBJECT",
-        properties: { i: { type: "INTEGER" }, art: { type: "STRING", enum: [...KINDS] } },
+        properties: { i: { type: "INTEGER" }, art: { type: "STRING", enum: [...CHECK_KINDS] } },
         required: ["i", "art"],
       },
     },
@@ -56,23 +56,18 @@ const RESPONSE_SCHEMA = {
 
 const requestSchema = z.object({
   items: z
-    .array(z.object({ fr: z.string().min(1).max(300), de: z.string().min(1).max(300) }))
+    .array(
+      z.object({
+        fr: z.string().min(1).max(LIMITS.MAX_WORD_CHARS),
+        de: z.string().min(1).max(LIMITS.MAX_WORD_CHARS),
+      }),
+    )
     .min(1)
     .max(150),
 });
 
-const answerSchema = z.object({
-  candidates: z.array(
-    z.object({
-      content: z.object({
-        parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() })),
-      }),
-    }),
-  ),
-});
-
 const flagsSchema = z.object({
-  flags: z.array(z.object({ i: z.number().int(), art: z.enum(KINDS) })),
+  flags: z.array(z.object({ i: z.number().int(), art: z.enum(CHECK_KINDS) })),
 });
 
 /**
@@ -84,26 +79,20 @@ const flagsSchema = z.object({
  */
 check.post("/check", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
+  const session = await requireSession(context, db);
 
-  const input = requestSchema.safeParse(await context.req.json().catch(() => null));
-  if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
-  const items = input.data.items;
+  // Kaputtes JSON und falsche Felder werden in worker/index.ts zu 400.
+  const { items } = requestSchema.parse(await context.req.json());
 
   const apiKey = context.env.GEMINI_API_KEY;
   if (!apiKey) return context.json({ error: "Die Erkennung ist nicht eingerichtet." }, 503);
 
   // Gezählt wird vor dem Aufruf bei Gemini.
-  if (
-    !(await countUse(db, session.userId, "check", CHECKS_PER_USER)) ||
-    !(await countGlobal(db, "check"))
-  ) {
+  if ((await spend(db, session.userId, "check")) !== "ok") {
     return context.json({ error: "Für heute sind es genug Gegenproben." }, 429);
   }
 
   // Regeln und fremder Text bleiben getrennt, siehe worker/prompt.ts.
-  const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
   const body = geminiRequest({
     rules: PROMPT,
     data: { zeilen: items.map((item, index) => ({ nr: index, fr: oneLine(item.fr), de: oneLine(item.de) })) },
@@ -114,13 +103,7 @@ check.post("/check", async (context) => {
     },
   });
 
-  const send = () =>
-    fetch(GEMINI_URL, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+  const send = () => postGemini(GEMINI_URL, apiKey, body, TIMEOUT_MS);
 
   try {
     let response: Response;
@@ -138,12 +121,7 @@ check.post("/check", async (context) => {
       const detail = (await response.text().catch(() => "")).slice(0, 200);
       throw new Error(`Gemini HTTP ${response.status}: ${detail}`);
     }
-    const answer = answerSchema.parse(await response.json());
-    const text = (answer.candidates[0]?.content.parts ?? [])
-      .filter((part) => !part.thought)
-      .map((part) => part.text ?? "")
-      .join("");
-    const parsed = flagsSchema.parse(JSON.parse(text));
+    const parsed = flagsSchema.parse(JSON.parse(answerText(await response.json())));
 
     // Nur gültige Zeilennummern, jede Zeile höchstens einmal.
     const seen = new Set<number>();

@@ -1,3 +1,4 @@
+import { LIMITS } from "@shared/limits";
 import { fnv1a, sayText } from "@shared/text";
 import type { Lang } from "@shared/types";
 import { apiPost } from "./api";
@@ -71,12 +72,7 @@ export function speak(text: string, lang: Lang, baseRate: number): void {
   stop();
   // Deutsch läuft einen Tick schneller als Französisch.
   const rate = lang === "fr" ? baseRate : Math.min(baseRate + 0.15, 1.3);
-  const hash = fnv1a(text);
-  const url = bundled.has(`${lang}/${hash}`)
-    ? `${BASE}${lang}/${hash}.mp3`
-    : lang === "fr" && remote.has(hash)
-      ? `${REMOTE_BASE}${hash}.mp3`
-      : null;
+  const url = urlFor(text, lang);
   if (!url) {
     speakWithDevice(text, lang, rate);
     return;
@@ -113,10 +109,11 @@ interface EnsureResponse {
 /** Derselbe Name wie in public/sw.js. */
 const AUDIO_CACHE = "audio-v1";
 
-function urlFor(text: string): string | null {
+/** Die Adresse der Aufnahme. null heisst: es gibt keine, das Gerät spricht selbst. */
+function urlFor(text: string, lang: Lang): string | null {
   const hash = fnv1a(text);
-  if (bundled.has(`fr/${hash}`)) return `${BASE}fr/${hash}.mp3`;
-  if (remote.has(hash)) return `${REMOTE_BASE}${hash}.mp3`;
+  if (bundled.has(`${lang}/${hash}`)) return `${BASE}${lang}/${hash}.mp3`;
+  if (lang === "fr" && remote.has(hash)) return `${REMOTE_BASE}${hash}.mp3`;
   return null;
 }
 
@@ -129,7 +126,7 @@ async function keepForOffline(texts: string[]): Promise<void> {
   try {
     const cache = await caches.open(AUDIO_CACHE);
     for (const text of new Set(texts)) {
-      const url = urlFor(text);
+      const url = urlFor(text, "fr");
       if (!url || (await cache.match(url))) continue;
       const response = await fetch(url);
       // Eine fehlende Datei kommt als HTML-Seite zurück. Die gehört nicht in den Cache.
@@ -142,7 +139,7 @@ async function keepForOffline(texts: string[]): Promise<void> {
   }
 }
 
-const BATCH = 10;
+const BATCH = LIMITS.MAX_AUDIO_TEXTS;
 let ensuring = false;
 let queued: string[] | null = null;
 /** Texte ohne sprechbaren Inhalt. Für die fragt die App in dieser Sitzung nicht noch einmal. */
@@ -158,9 +155,6 @@ const PAUSE_MS = 5 * 60_000;
  * Jedes Wort wird einzeln aufgenommen. Bis eine Aufnahme fertig ist, spricht das Gerät.
  * Fehler bleiben still: beim nächsten Start geht es einfach weiter.
  */
-/** Längster Text, für den der Server eine Aufnahme macht. Muss zu worker/audio.ts passen. */
-const MAX_AUDIO_CHARS = 200;
-
 export async function ensureAudio(texts: string[]): Promise<void> {
   if (ensuring) {
     // Der laufende Durchgang nimmt die neue Liste danach auf.
@@ -173,7 +167,7 @@ export async function ensureAudio(texts: string[]): Promise<void> {
     await loadAudioIndex();
     let todo = [...new Set(texts)].filter((text) => {
       // Der Server nimmt keinen längeren Text an. Ein einziger würde die ganze Gruppe scheitern lassen.
-      if (text.length > MAX_AUDIO_CHARS) return false;
+      if (text.length > LIMITS.MAX_AUDIO_CHARS) return false;
       const hash = fnv1a(text);
       return !bundled.has(`fr/${hash}`) && !remote.has(hash) && !skipped.has(hash);
     });

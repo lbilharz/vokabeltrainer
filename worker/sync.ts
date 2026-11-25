@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as schema from "./db/schema";
-import { readSession } from "./session";
+import { requireSession } from "./session";
 import { LIMITS } from "../shared/limits";
 
 export const sync = new Hono<{ Bindings: Env }>();
@@ -82,9 +82,7 @@ const syncSchema = z.object({
  */
 sync.post("/sync", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
-  const userId = session.userId;
+  const { userId } = await requireSession(context, db);
 
   const body = syncSchema.parse(await context.req.json());
 
@@ -204,34 +202,34 @@ sync.post("/sync", async (context) => {
   }
 
   // Gelesen wird erst nach dem Schreiben, damit der Client den eigenen Stand zurückbekommt.
-  const cardRows = await db
-    .select({
-      id: schema.cards.itemId,
-      box: schema.cards.box,
-      due: schema.cards.due,
-      seen: schema.cards.seen,
-      t: schema.cards.t,
-    })
-    .from(schema.cards)
-    .where(and(eq(schema.cards.userId, userId), gte(schema.cards.updatedAt, body.since)));
-
-  const metaRows = await db
-    .select({ data: schema.userMeta.data, t: schema.userMeta.t })
-    .from(schema.userMeta)
-    .where(and(eq(schema.userMeta.userId, userId), gte(schema.userMeta.updatedAt, body.since)))
-    .limit(1);
-
+  // Die drei Abfragen gehen in einer Runde zur Datenbank.
+  const [cardRows, metaRows, setRows] = await db.batch([
+    db
+      .select({
+        id: schema.cards.itemId,
+        box: schema.cards.box,
+        due: schema.cards.due,
+        seen: schema.cards.seen,
+        t: schema.cards.t,
+      })
+      .from(schema.cards)
+      .where(and(eq(schema.cards.userId, userId), gte(schema.cards.updatedAt, body.since))),
+    db
+      .select({ data: schema.userMeta.data, t: schema.userMeta.t })
+      .from(schema.userMeta)
+      .where(and(eq(schema.userMeta.userId, userId), gte(schema.userMeta.updatedAt, body.since)))
+      .limit(1),
+    db
+      .select({
+        id: schema.sets.setId,
+        t: schema.sets.t,
+        deleted: schema.sets.deleted,
+        data: schema.sets.data,
+      })
+      .from(schema.sets)
+      .where(and(eq(schema.sets.userId, userId), gte(schema.sets.updatedAt, body.since))),
+  ]);
   const metaRow = metaRows[0];
-
-  const setRows = await db
-    .select({
-      id: schema.sets.setId,
-      t: schema.sets.t,
-      deleted: schema.sets.deleted,
-      data: schema.sets.data,
-    })
-    .from(schema.sets)
-    .where(and(eq(schema.sets.userId, userId), gte(schema.sets.updatedAt, body.since)));
 
   return context.json({
     now,

@@ -2,6 +2,7 @@ import { eq, gt, and } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import * as schema from "./db/schema";
 
 export const COOKIE = "travok_session";
@@ -12,7 +13,7 @@ export interface SessionUser {
   displayName: string;
 }
 
-type Database = DrizzleD1Database<typeof schema>;
+export type Database = DrizzleD1Database<typeof schema>;
 
 export async function startSession(
   context: Context,
@@ -58,4 +59,11 @@ export async function readSession(
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+/** Die Sitzung der Anfrage. Ohne gültige Sitzung endet die Anfrage mit 401. */
+export async function requireSession(context: Context, db: Database): Promise<SessionUser> {
+  const session = await readSession(context, db);
+  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
+  return session;
 }

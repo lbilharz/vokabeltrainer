@@ -4,7 +4,8 @@
  */
 
 const ZONE = "Europe/Berlin";
-const DAY_MS = 86_400_000;
+/** Ein Tag in Millisekunden. */
+export const DAY_MS = 86_400_000;
 
 export const WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 export const MONTHS = [

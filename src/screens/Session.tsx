@@ -3,8 +3,9 @@ import type { WeakReason } from "@shared/focus";
 import { type Step, makeStep, targetsFor } from "@shared/session";
 import { closestOf, copySlots, copyTarget, gapSlots, markDiff, rateGaps } from "@shared/copy";
 import { getCard, introduce, rate } from "@shared/srs";
-import { anotherForm } from "@shared/forms";
-import { type Closeness, closeness, isCorrect, norm } from "@shared/text";
+import { type Near, ruleTyped } from "@shared/answer";
+import { LIMITS } from "@shared/limits";
+import { norm } from "@shared/text";
 import type { CardState, Item, Progress } from "@shared/types";
 import { CopyWord } from "../components/CopyWord";
 import { Icon } from "../components/Icon";
@@ -33,10 +34,13 @@ interface Props {
  * Was bei einer fast richtigen Antwort in der Rückmeldung steht.
  * Akzente und Tippfehler zählen als richtig. Die Karte geht weiter.
  */
-const NEAR_NOTES: Record<"accents" | "typo", string> = {
+const NEAR_NOTES: Record<Near, string> = {
   accents: "Achte beim nächsten Mal auf die Akzente. So schreibt man es:",
   typo: "Achte beim nächsten Mal auf die Schreibweise. So schreibt man es:",
 };
+
+/** Der Hinweis auf eine andere Form, wenn es keinen genaueren gibt. */
+const FORM_HINT = "Fast. Das Wort stimmt, aber die Form nicht. Schau noch einmal genau auf das Deutsche.";
 
 const PROMPTS: Record<Step["kind"], string> = {
   intro: "Was heißt das auf Deutsch?",
@@ -45,6 +49,10 @@ const PROMPTS: Record<Step["kind"], string> = {
   listenChoice: "Hör zu. Was heißt das auf Deutsch?",
   listenType: "Hör zu. Schreibe, was du hörst.",
 };
+
+function closeKeyboard(): void {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
 
 export function Session(props: Props) {
   const { itemsById, today, settings } = props;
@@ -59,7 +67,7 @@ export function Session(props: Props) {
    */
   const [result, setResult] = useState<{
     correct: boolean;
-    near?: "accents" | "typo";
+    near?: Near;
     also?: boolean;
     note?: string;
   } | null>(null);
@@ -120,71 +128,62 @@ export function Session(props: Props) {
 
   const check = (giveUp = false) => {
     if (result || judging) return;
-    let correct: boolean;
-    let near: "accents" | "typo" | undefined;
-    let askJudge = false;
     if (hasChoices) {
       if (!giveUp && choice === null) return;
-      correct = !giveUp && choice === item.de;
-    } else {
-      if (!giveUp && !norm(typed)) {
-        inputRef.current?.focus();
-        return;
-      }
-      const targets = targetsFor(item, pool);
-      correct = !giveUp && isCorrect(typed, targets);
-      if (!giveUp && !correct) {
-        // Wer genau ein anderes Wort aus dem Set schreibt, hat sich nicht vertippt.
-        const otherWord = pool.some((other) => other.id !== item.id && isCorrect(typed, [other.fr]));
-        const close: Closeness = otherWord ? null : closeness(typed, targets);
-        if (close === "accents" || close === "typo") {
-          correct = true;
-          near = close;
-        } else if (close === "article" && !articleHint) {
-          // Der Artikel gehört zum Wort. Dafür gibt es einen zweiten Versuch.
-          setArticleHint(true);
-          inputRef.current?.focus();
-          return;
-        } else if (step.kind === "type" && close !== "article") {
-          // Das richtige Wort in einer anderen Form bekommt auch einen zweiten Versuch.
-          const form = formHint === null ? anotherForm(typed, targets, item, pool) : null;
-          if (form) {
-            setFormHint(
-              form.other
-                ? `Das ist „${form.other.de}“. Hier ist eine andere Form gefragt.`
-                : "Fast. Das Wort stimmt, aber die Form nicht. Schau noch einmal genau auf das Deutsche.",
-            );
-            inputRef.current?.focus();
-            return;
-          }
-          // Ein anderes Wort der Lektion ist einfach falsch. Dafür fragt die App nicht nach.
-          askJudge = !otherWord;
-        }
-      }
+      // Nach dem Kennenlernen schreibt das Kind das Wort einmal ab.
+      finish(!giveUp && choice === item.de, undefined, step.kind === "intro");
+      return;
     }
-
-    // Der Schiedsrichter ist ein Netzaufruf. Ohne Netz und für lange Texte bleibt es bei den Regeln.
-    const fr = item.fr.trim();
-    const answer = typed.trim();
-    if (askJudge && navigator.onLine !== false && fr.length <= 300 && item.de.length <= 300 && answer.length <= 120) {
-      const round = ++judgeRound.current;
-      setJudging(true);
-      void judgeAnswer(item.de, fr, answer).then((judgement) => {
-        if (round !== judgeRound.current) return;
-        setJudging(false);
-        if (judgement.verdict === "correct") {
-          finish(true, undefined, false, { also: true, note: judgement.note });
-        } else if (judgement.verdict === "form" && formHint === null) {
-          setFormHint(judgement.note || "Fast. Das Wort stimmt, aber die Form nicht. Schau noch einmal genau auf das Deutsche.");
-          inputRef.current?.focus();
-        } else {
-          finish(false, undefined, true, { note: judgement.note });
-        }
-      });
+    if (giveUp) {
+      finish(false, undefined, true);
       return;
     }
 
-    finish(correct, near, step.kind === "intro" || (!hasChoices && !correct));
+    const ruling = ruleTyped(typed, item, pool, {
+      kind: step.kind,
+      articleHinted: articleHint,
+      formHinted: formHint !== null,
+    });
+    if (ruling.type === "empty") {
+      inputRef.current?.focus();
+    } else if (ruling.type === "correct") {
+      finish(true, ruling.near, false);
+    } else if (ruling.type === "articleHint") {
+      setArticleHint(true);
+      inputRef.current?.focus();
+    } else if (ruling.type === "formHint") {
+      setFormHint(ruling.other ? `Das ist „${ruling.other.de}“. Hier ist eine andere Form gefragt.` : FORM_HINT);
+      inputRef.current?.focus();
+    } else if (ruling.askJudge && canJudge()) {
+      askJudge();
+    } else {
+      // Nach einer falschen geschriebenen Antwort schreibt das Kind das Wort ab.
+      finish(false, undefined, true);
+    }
+  };
+
+  /** Der Schiedsrichter ist ein Netzaufruf. Ohne Netz und für lange Texte bleibt es bei den Regeln. */
+  const canJudge = () =>
+    navigator.onLine !== false &&
+    item.fr.trim().length <= LIMITS.MAX_WORD_CHARS &&
+    item.de.length <= LIMITS.MAX_WORD_CHARS &&
+    typed.trim().length <= LIMITS.MAX_ANSWER_CHARS;
+
+  const askJudge = () => {
+    const round = ++judgeRound.current;
+    setJudging(true);
+    void judgeAnswer(item.de, item.fr.trim(), typed.trim()).then((judgement) => {
+      if (round !== judgeRound.current) return;
+      setJudging(false);
+      if (judgement.verdict === "correct") {
+        finish(true, undefined, false, { also: true, note: judgement.note });
+      } else if (judgement.verdict === "form" && formHint === null) {
+        setFormHint(judgement.note || FORM_HINT);
+        inputRef.current?.focus();
+      } else {
+        finish(false, undefined, true, { note: judgement.note });
+      }
+    });
   };
 
   /** Das Lückenwort ist gefüllt. missed zählt die Lücken mit einem Fehlversuch. */
@@ -198,7 +197,7 @@ export function Session(props: Props) {
   /** Trägt das Ergebnis ein und zeigt die Rückmeldung. copyAfter: vorher das Wort abschreiben lassen. */
   const finish = (
     correct: boolean,
-    near: "accents" | "typo" | undefined,
+    near: Near | undefined,
     copyAfter: boolean,
     judged?: { also?: boolean; note?: string },
   ) => {
@@ -224,14 +223,14 @@ export function Session(props: Props) {
     // Abschreiben: nach dem Kennenlernen immer, sonst nach einer falschen geschriebenen Antwort.
     const needsCopy = copyAfter && copySlots(copyText).some((slot) => !slot.given);
     // Ohne Abschreiben die Tastatur schliessen, sonst verdeckt sie die Rückmeldung.
-    if (!needsCopy && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (!needsCopy) closeKeyboard();
     if (step.kind === "type" || step.kind === "gap") say();
     setCopying(needsCopy);
     setResult({ correct, near, also: judged?.also, note: judged?.note });
   };
 
   const copied = () => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    closeKeyboard();
     setCopying(false);
   };
 
@@ -260,6 +259,11 @@ export function Session(props: Props) {
     setCopying(false);
   };
 
+  /** Farbe der Rückmeldung. Fast richtig und "Auch richtig" sehen gleich aus. */
+  const tone = !result ? "" : result.near || result.also ? "near" : result.correct ? "good" : "bad";
+  /** Die Überschrift ohne die zwei Sonderfälle "Auch richtig" und "Fast richtig". */
+  const plainTitle = result?.correct ? "Richtig" : step.kind === "intro" ? "Merk dir" : "Noch nicht";
+
   const done = pos + (result ? 1 : 0);
   // Jede neue Karte kommt nach dem Vorstellen noch einmal. Das zählt der Balken gleich mit.
   const total = queue.length + queue.slice(done).filter((s) => s.kind === "intro").length;
@@ -281,7 +285,7 @@ export function Session(props: Props) {
       {result && copying && (
         <div className="question">
           <span className={`chip ${result.correct ? "good" : ""}`}>
-            {result.correct ? "Richtig" : step.kind === "intro" ? "Merk dir" : "Noch nicht"}
+            {plainTitle}
           </span>
           <p className="prompt">Schreib es einmal ab.</p>
           <CopyWord key={pos} target={copyText} onDone={copied} />
@@ -412,7 +416,7 @@ export function Session(props: Props) {
       {sheetOpen && result && (
         <footer
           ref={sheetRef}
-          className={`sheet ${result.near || result.also ? "near" : result.correct ? "good" : "bad"}`}
+          className={`sheet ${tone}`}
           aria-live="polite"
         >
           <div className="sheet-body">
@@ -420,17 +424,7 @@ export function Session(props: Props) {
             <span className="sheet-mark">
               <Icon name={result.correct ? "check" : "x"} size={20} stroke={3.2} />
             </span>
-            <h2>
-              {result.also
-                ? "Auch richtig"
-                : result.near
-                  ? "Fast richtig"
-                  : result.correct
-                    ? "Richtig"
-                    : step.kind === "intro"
-                      ? "Merk dir"
-                      : "Noch nicht"}
-            </h2>
+            <h2>{result.also ? "Auch richtig" : result.near ? "Fast richtig" : plainTitle}</h2>
           </div>
           {result.note && <p className="sheet-note">{result.note}</p>}
           {result.near &&

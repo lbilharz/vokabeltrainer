@@ -20,14 +20,15 @@ This is last write wins.
 
 - `POST /api/sync` receives `since`, the changed cards and lessons, and optionally the meta.
 - The server writes with `INSERT ... ON CONFLICT DO UPDATE`. The condition is `excluded.t >= t`. On a tie the incoming version wins.
-- Then the server reads everything written since `since` and returns it.
-- The client applies the answer (`applyResponse` in `shared/sync.ts`). It keeps its own version if that one is newer.
+- Then the server reads everything written since `since` and returns it. The three reads go to the database in one batch.
+- The client applies the answer (`applyResponse` for cards and `mergeSets` for lessons, both in `shared/sync.ts`). It keeps its own version if that one is newer.
 
 The pure logic is in `shared/sync.ts` and has tests. The client remembers the change time per card (`stamps`) and the unsent cards (`dirty`).
 
 ## When the client syncs
 
 The client syncs at start, when the page becomes visible, when the network returns, after changes, and on an interval while something is unsent (`src/Trainer.tsx`).
+When the page goes to the background, the client syncs only if something is unsent. A sync that only fetches is of no use to a hidden page.
 Offline, everything stays local. When the network returns, the state goes to the server.
 
 ## Decisions

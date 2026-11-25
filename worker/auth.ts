@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle } from "drizzle-orm/d1";
 import { and, count, eq, gt, lt } from "drizzle-orm";
 import {
   generateAuthenticationOptions,
@@ -13,15 +13,14 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { z } from "zod";
-import { fromBase64Url, toBase64Url } from "./base64";
+import { fromBase64Url, toBase64Url } from "../shared/base64";
 import * as schema from "./db/schema";
-import { endSession, readSession, startSession } from "./session";
+import { endSession, readSession, requireSession, startSession, type Database } from "./session";
 
 const CHALLENGE_LIFETIME_MS = 5 * 60 * 1000;
 
 export const auth = new Hono<{ Bindings: Env }>();
 
-type Database = DrizzleD1Database<typeof schema>;
 
 /**
  * RP ID und Origin kommen aus der Anfrage, nicht aus der Konfiguration.
@@ -152,8 +151,8 @@ auth.get("/me", async (context) => {
   return context.json({
     user: session ? { id: session.userId, displayName: session.displayName } : null,
     // Frisches Deployment, noch niemand da: der Erstanlauf zeigt die Erklärung
-    // und das Namensfeld.
-    registrationOpen: !(await userExists(db)),
+    // und das Namensfeld. Wer angemeldet ist, beweist schon, dass es ein Konto gibt.
+    registrationOpen: !session && !(await userExists(db)),
     // Ist ein Code gesetzt, kann auch später noch ein Konto dazukommen. Nur dann
     // hat es Sinn, im Anmeldebildschirm darauf hinzuweisen.
     signupCodeRequired: Boolean(context.env.SIGNUP_CODE?.trim()),
@@ -326,8 +325,7 @@ auth.post("/login/verify", async (context) => {
  */
 auth.get("/credentials", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
+  const session = await requireSession(context, db);
 
   const rows = await db
     .select({
@@ -356,8 +354,7 @@ auth.post("/credentials/options", async (context) => {
   const db = drizzle(context.env.DB, { schema });
   const { rpID } = relyingParty(context.req.url);
 
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
+  const session = await requireSession(context, db);
 
   await sweepChallenges(db);
 
@@ -397,8 +394,7 @@ auth.post("/credentials/verify", async (context) => {
   const db = drizzle(context.env.DB, { schema });
   const { rpID, origin } = relyingParty(context.req.url);
 
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
+  const session = await requireSession(context, db);
 
   const body = registerVerifySchema.parse(await context.req.json());
   const challenge = await takeChallenge(db, body.challengeId, "add_credential");
@@ -438,8 +434,7 @@ auth.post("/credentials/verify", async (context) => {
 
 auth.delete("/credentials/:id", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
+  const session = await requireSession(context, db);
 
   const rows = await db
     .select({ id: schema.credentials.id })

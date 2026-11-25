@@ -1,4 +1,4 @@
-import { MONTHS, WEEKDAYS } from "./dates";
+import { DAY_MS, MONTHS, WEEKDAYS } from "./dates";
 import type { Counts } from "./lessons";
 import type { Item } from "./types";
 
@@ -43,7 +43,6 @@ export function reasonLabel(reason: WeakReason): string {
 // ---------- Tage ----------
 // Eine Tagesnummer zählt Tage seit 1970. Als Millisekunden gelesen gibt sie den Tag in UTC wieder.
 
-const DAY_MS = 86_400_000;
 const SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
 const dateOf = (day: number) => new Date(day * DAY_MS);

@@ -10,7 +10,7 @@ import {
   shuffle,
 } from "@shared/session";
 import { dayNumber, getCard } from "@shared/srs";
-import { applyResponse, outgoing, touch } from "@shared/sync";
+import { applyResponse, mergeSets, outgoing, touch } from "@shared/sync";
 import type { CardState, Item, RawItem, SetDoc } from "@shared/types";
 import { Settings } from "./components/Settings";
 import { TEMPLATES, buildSets } from "./data/sets";
@@ -124,15 +124,7 @@ export function Trainer({ user, onSignedOut }: Props) {
       );
       setData((prev) => {
         const merged = applyResponse(prev.cards, prev.sync, pushed, response.cards, response.now);
-        // Sets: je Set gewinnt die jüngere Änderung, wie bei den Karten.
-        // Ohne Änderung bleibt dasselbe Objekt. Sonst rechnet die App bei jedem Abgleich alles neu.
-        let mergedSets = prev.sets;
-        for (const doc of response.sets ?? []) {
-          const local = mergedSets[doc.id];
-          if (local && (doc.t < local.t || (doc.t === local.t && doc.deleted === local.deleted))) continue;
-          if (mergedSets === prev.sets) mergedSets = { ...prev.sets };
-          mergedSets[doc.id] = doc;
-        }
+        const mergedSets = mergeSets(prev.sets, response.sets);
         const sent = new Map(pushedSets.map((doc) => [doc.id, doc.t]));
         const setsDirty = prev.setsDirty.filter((id) => sent.get(id) !== prev.sets[id]?.t);
         let next: Persisted = { ...prev, cards: merged.cards, sync: merged.sync, sets: mergedSets, setsDirty };
@@ -156,20 +148,34 @@ export function Trainer({ user, onSignedOut }: Props) {
     }
   }, [onSignedOut]);
 
+  /**
+   * Gleicht ab, sobald der gerade geänderte Stand gespeichert ist.
+   * Der neue Stand liegt erst beim nächsten Zeichnen vor. Ein Abgleich sofort würde noch den alten schicken.
+   */
+  const syncSoon = useCallback(() => window.setTimeout(() => void syncNow(), 0), [syncNow]);
+
   useEffect(() => {
     void syncNow();
-    const onVisibility = () => void syncNow();
+    const sync = () => void syncNow();
+    const hasUnsent = () => {
+      const current = dataRef.current;
+      return current.sync.dirty.length > 0 || current.metaDirty || current.setsDirty.length > 0;
+    };
+    // Kommt die App nach vorn, holt sie den Stand der anderen Geräte.
+    // Geht sie nach hinten, schickt sie nur, was noch offen ist.
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" || hasUnsent()) sync();
+    };
     document.addEventListener("visibilitychange", onVisibility);
     // Was ohne Netz geübt wurde, geht mit, sobald das Netz zurück ist.
-    window.addEventListener("online", onVisibility);
+    window.addEventListener("online", sync);
     // Offene Änderungen gehen spätestens nach einer Minute mit.
     const timer = window.setInterval(() => {
-      const current = dataRef.current;
-      if (current.sync.dirty.length > 0 || current.metaDirty || current.setsDirty.length > 0) void syncNow();
+      if (hasUnsent()) sync();
     }, 60_000);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("online", onVisibility);
+      window.removeEventListener("online", sync);
       window.clearInterval(timer);
     };
   }, [syncNow]);
@@ -178,7 +184,6 @@ export function Trainer({ user, onSignedOut }: Props) {
   const setMeta = (change: (prev: Persisted) => Partial<Persisted>) =>
     setData((prev) => ({ ...prev, ...change(prev), metaT: Date.now(), metaDirty: true }));
 
-  // Für jedes französische Wort soll es eine Aufnahme geben. Das läuft im Hintergrund.
   // Kennt der Server eine neuere Version, lädt die App sie. Aber nur auf der Startseite, nie mitten in einer Runde.
   const [updateWaiting, setUpdateWaiting] = useState(() => newerVersion() !== null);
   useEffect(() => onNewerVersion(() => setUpdateWaiting(true)), []);
@@ -186,6 +191,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     if (updateWaiting && view.name === "home" && !settingsOpen && syncStatus !== "running") void loadNewerVersion();
   }, [updateWaiting, view.name, settingsOpen, syncStatus]);
 
+  // Für jedes französische Wort soll es eine Aufnahme geben. Das läuft im Hintergrund.
   useEffect(() => {
     const texts = sets.flatMap((set) => set.items.map((item) => item.fr));
     if (texts.length > 0) void ensureAudio(texts);
@@ -213,7 +219,7 @@ export function Trainer({ user, onSignedOut }: Props) {
         return { ...prev, sets, setsDirty: [...dirty] };
       });
       // Der Abgleich beim Start kennt die neuen Sets noch nicht. Deshalb gleich noch einer.
-      window.setTimeout(() => void syncNow(), 0);
+      syncSoon();
     }
     // Die App startet immer auf dem Lernpfad. "Zurück" im Browser führt dorthin.
     history.replaceState({}, "", "/");
@@ -249,6 +255,8 @@ export function Trainer({ user, onSignedOut }: Props) {
     focus ? { setId: focus.setId, day: focus.day, newToday } : undefined,
   );
 
+  const dueTomorrow = countDueBy(sets, data.cards, today + 1);
+
   const startSession = (items: Item[], options: RoundOptions = {}) => {
     if (items.length === 0) return;
     const steps = items.map((item) =>
@@ -267,16 +275,16 @@ export function Trainer({ user, onSignedOut }: Props) {
     open({ name: "session", steps, run: Date.now(), options }, "/ueben");
   };
 
-  const startToday = () => {
-    const pick = (ids: string[]) => ids.map((id) => itemsById.get(id)!).filter(Boolean);
-    startSession([...pick(plan.newIds), ...shuffle(pick(plan.dueIds), Math.random)]);
+  const itemsOf = (ids: string[]) => ids.map((id) => itemsById.get(id)).filter((item) => item !== undefined);
+  /** Neue Wörter zuerst zum Kennenlernen, dann die gesehenen gemischt. */
+  const newFirst = (items: Item[]) => {
+    const isNew = (item: Item) => !getCard(data.cards, item.id, today).seen;
+    return [...items.filter(isNew), ...shuffle(items.filter((item) => !isNew(item)), Math.random)];
   };
 
-  const startStation = (station: Station) => {
-    const items = station.itemIds.map((id) => itemsById.get(id)!).filter(Boolean);
-    const isNew = (item: Item) => !getCard(data.cards, item.id, today).seen;
-    startSession([...items.filter(isNew), ...shuffle(items.filter((i) => !isNew(i)), Math.random)]);
-  };
+  const startToday = () => startSession([...itemsOf(plan.newIds), ...shuffle(itemsOf(plan.dueIds), Math.random)]);
+
+  const startStation = (station: Station) => startSession(newFirst(itemsOf(station.itemIds)));
 
   /** Die Test-Karte: Übungsrunde mit den unsicheren Wörtern, am Tag vor dem Test die Generalprobe. */
   const startTest = () => {
@@ -286,12 +294,8 @@ export function Trainer({ user, onSignedOut }: Props) {
       startSession(practiceItems(set.items, focus));
       return;
     }
-    // Generalprobe: alle Wörter. Neue zuerst zum Kennenlernen, dann die gesehenen gemischt.
-    const isNew = (item: Item) => !getCard(data.cards, item.id, today).seen;
-    startSession([...set.items.filter(isNew), ...shuffle(set.items.filter((i) => !isNew(i)), Math.random)], {
-      freeWriting: true,
-      resultFor: focus.day,
-    });
+    // Generalprobe: alle Wörter.
+    startSession(newFirst(set.items), { freeWriting: true, resultFor: focus.day });
   };
 
   /** Merkt, ob das Kind ein Wort schreiben konnte. Ändert sich nichts, bleibt der Stand unberührt. */
@@ -354,8 +358,7 @@ export function Trainer({ user, onSignedOut }: Props) {
       metaDirty: true,
     }));
     goHome();
-    // Erst nach dem Speichern abgleichen. Der neue Stand liegt beim nächsten Zeichnen vor.
-    window.setTimeout(() => void syncNow(), 0);
+    syncSoon();
   };
 
   /** Benennt die aktuelle Lektion um. Der Lernstand bleibt, er hängt an den Wörtern. */
@@ -375,7 +378,7 @@ export function Trainer({ user, onSignedOut }: Props) {
         setsDirty: [...new Set([...prev.setsDirty, active.id])],
       };
     });
-    window.setTimeout(() => void syncNow(), 0);
+    syncSoon();
   };
 
   /** Entfernt die aktuelle Lektion. Der leere Eintrag bleibt, damit die Löschung mitwandert. */
@@ -390,7 +393,7 @@ export function Trainer({ user, onSignedOut }: Props) {
       metaT: now,
       metaDirty: true,
     }));
-    window.setTimeout(() => void syncNow(), 0);
+    syncSoon();
   };
 
   const resetActive = () => {
@@ -407,7 +410,7 @@ export function Trainer({ user, onSignedOut }: Props) {
       }
       return { ...prev, cards, sync };
     });
-    void syncNow();
+    syncSoon();
   };
 
   return (
@@ -419,11 +422,11 @@ export function Trainer({ user, onSignedOut }: Props) {
           progress={data.cards}
           today={today}
           plan={plan}
-          dueTomorrow={countDueBy(sets, data.cards, today + 1)}
+          dueTomorrow={dueTomorrow}
           focus={focus}
           onOpenTest={() => open({ name: "test" }, "/test")}
           onStartTest={startTest}
-          loading={sets.length === 0 && data.sync.since === 0 && syncStatus === "running"}
+          loading={!setsLoaded && syncStatus === "running"}
           onAddSet={() => open({ name: "add" }, "/neu")}
           onRenameSet={renameActive}
           onStartToday={startToday}
@@ -457,7 +460,7 @@ export function Trainer({ user, onSignedOut }: Props) {
         <Done
           stats={view.stats}
           unit={active?.unit ?? ["Wort", "Wörter"]}
-          dueTomorrow={countDueBy(sets, data.cards, today + 1)}
+          dueTomorrow={dueTomorrow}
           onHome={goHome}
         />
       )}

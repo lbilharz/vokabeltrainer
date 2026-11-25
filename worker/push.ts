@@ -5,7 +5,8 @@ import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { berlinNow, buildCalendar, shouldRemind } from "../shared/reminder";
 import * as schema from "./db/schema";
-import { readSession } from "./session";
+import { requireSession } from "./session";
+import { fromBase64Url, toBase64Url } from "../shared/base64";
 
 export const push = new Hono<{ Bindings: Env }>();
 
@@ -17,20 +18,6 @@ const SUBJECT = "https://vok.cards";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
 const NOT_CONFIGURED = { error: "Erinnerungen sind nicht eingerichtet." };
-
-function base64url(bytes: Uint8Array): string {
-  let text = "";
-  for (const byte of bytes) text += String.fromCharCode(byte);
-  return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function fromBase64url(value: string): Uint8Array {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const text = atob(padded);
-  const bytes = new Uint8Array(text.length);
-  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
-  return bytes;
-}
 
 interface Vapid {
   /** Öffentlicher Schlüssel, 65 Byte (0x04 || x || y) als base64url. */
@@ -46,8 +33,8 @@ async function loadVapid(env: Env): Promise<Vapid | null> {
     const { kty, crv, x, y, d } = jwk;
     if (kty !== "EC" || crv !== "P-256") return null;
     if (typeof x !== "string" || typeof y !== "string" || typeof d !== "string") return null;
-    const xBytes = fromBase64url(x);
-    const yBytes = fromBase64url(y);
+    const xBytes = fromBase64Url(x);
+    const yBytes = fromBase64Url(y);
     if (xBytes.length !== 32 || yBytes.length !== 32) return null;
     const signingKey = await crypto.subtle.importKey(
       "jwk",
@@ -60,7 +47,7 @@ async function loadVapid(env: Env): Promise<Vapid | null> {
     point[0] = 4;
     point.set(xBytes, 1);
     point.set(yBytes, 33);
-    return { publicKey: base64url(point), signingKey };
+    return { publicKey: toBase64Url(point), signingKey };
   } catch {
     return null;
   }
@@ -69,8 +56,8 @@ async function loadVapid(env: Env): Promise<Vapid | null> {
 /** Baut den VAPID-Header für einen Push-Dienst. Das Token wird nie geloggt. */
 async function authorization(vapid: Vapid, endpoint: string, nowMs: number): Promise<string> {
   const encoder = new TextEncoder();
-  const header = base64url(encoder.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
-  const payload = base64url(
+  const header = toBase64Url(encoder.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = toBase64Url(
     encoder.encode(
       JSON.stringify({
         aud: new URL(endpoint).origin,
@@ -86,7 +73,7 @@ async function authorization(vapid: Vapid, endpoint: string, nowMs: number): Pro
     vapid.signingKey,
     encoder.encode(signingInput),
   );
-  return `vapid t=${signingInput}.${base64url(new Uint8Array(signature))}, k=${vapid.publicKey}`;
+  return `vapid t=${signingInput}.${toBase64Url(new Uint8Array(signature))}, k=${vapid.publicKey}`;
 }
 
 const endpointBody = z.object({ endpoint: z.string().min(1).max(1000) });
@@ -96,20 +83,6 @@ const putBody = z.object({
   // Nur Viertelstunden sind erlaubt.
   minute: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(45)]).default(0),
 });
-
-async function requireUser(context: Parameters<typeof readSession>[0], db: ReturnType<typeof drizzle<typeof schema>>) {
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
-  return session.userId;
-}
-
-async function readJson(request: Request): Promise<unknown> {
-  try {
-    return await request.json();
-  } catch {
-    throw new HTTPException(400, { message: "Ungültige Anfrage." });
-  }
-}
 
 /** https ist Pflicht. http://localhost und http://127.0.0.1 nur, wenn die Anfrage selbst von dort kommt. */
 function endpointAllowed(endpoint: string, requestUrl: string): boolean {
@@ -124,7 +97,6 @@ function endpointAllowed(endpoint: string, requestUrl: string): boolean {
   return LOCAL_HOSTS.has(url.hostname) && LOCAL_HOSTS.has(new URL(requestUrl).hostname);
 }
 
-/** Öffentlicher Schlüssel für pushManager.subscribe. Ohne Anmeldung, er ist nicht geheim. */
 /**
  * Die Erinnerung als Kalendertermin. Dafür speichert der Server nichts.
  * Er liefert nur eine fertige Datei, die der Kalender des Geräts übernimmt.
@@ -141,6 +113,7 @@ push.get("/reminder.ics", (context) => {
   });
 });
 
+/** Öffentlicher Schlüssel für pushManager.subscribe. Ohne Anmeldung, er ist nicht geheim. */
 push.get("/push/key", async (context) => {
   const vapid = await loadVapid(context.env);
   if (!vapid) return context.json(NOT_CONFIGURED, 503);
@@ -149,14 +122,13 @@ push.get("/push/key", async (context) => {
 
 push.post("/push/state", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const userId = await requireUser(context, db);
-  const input = endpointBody.safeParse(await readJson(context.req.raw));
-  if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
+  const { userId } = await requireSession(context, db);
+  const { endpoint } = endpointBody.parse(await context.req.json());
 
   const rows = await db
     .select({ hour: schema.pushSubscriptions.hour, minute: schema.pushSubscriptions.minute })
     .from(schema.pushSubscriptions)
-    .where(and(eq(schema.pushSubscriptions.endpoint, input.data.endpoint), eq(schema.pushSubscriptions.userId, userId)))
+    .where(and(eq(schema.pushSubscriptions.endpoint, endpoint), eq(schema.pushSubscriptions.userId, userId)))
     .limit(1);
   const row = rows[0];
   return context.json({ enabled: row !== undefined, hour: row?.hour ?? null, minute: row?.minute ?? null });
@@ -164,10 +136,8 @@ push.post("/push/state", async (context) => {
 
 push.put("/push", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const userId = await requireUser(context, db);
-  const input = putBody.safeParse(await readJson(context.req.raw));
-  if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
-  const { endpoint, hour, minute } = input.data;
+  const { userId } = await requireSession(context, db);
+  const { endpoint, hour, minute } = putBody.parse(await context.req.json());
   if (!endpointAllowed(endpoint, context.req.url)) {
     throw new HTTPException(400, { message: "Ungültige Adresse für Erinnerungen." });
   }
@@ -186,13 +156,12 @@ push.put("/push", async (context) => {
 
 push.delete("/push", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const userId = await requireUser(context, db);
-  const input = endpointBody.safeParse(await readJson(context.req.raw));
-  if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
+  const { userId } = await requireSession(context, db);
+  const { endpoint } = endpointBody.parse(await context.req.json());
 
   await db
     .delete(schema.pushSubscriptions)
-    .where(and(eq(schema.pushSubscriptions.endpoint, input.data.endpoint), eq(schema.pushSubscriptions.userId, userId)));
+    .where(and(eq(schema.pushSubscriptions.endpoint, endpoint), eq(schema.pushSubscriptions.userId, userId)));
   return context.json({ ok: true });
 });
 

@@ -1,33 +1,31 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { drizzle } from "drizzle-orm/d1";
-import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { mergeReadings, partialWords, type MergedItem, type ReadItem } from "../shared/extract";
 import * as schema from "./db/schema";
-import { readSession } from "./session";
+import { requireSession } from "./session";
 import { LIMITS } from "../shared/limits";
-import { countGlobal } from "./usage";
+import { oneLine } from "../shared/text";
+import { spend } from "./usage";
 import { geminiRequest } from "./prompt";
+import { RETRY_STATUS, answerText, geminiUrl, postGemini } from "./gemini";
 
 export const extract = new Hono<{ Bindings: Env }>();
 
 /** Das Bildmodell. Nur hier ändern. */
 const GEMINI_MODEL = "gemini-3.8-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse`;
+const GEMINI_URL = geminiUrl(GEMINI_MODEL, true);
 
 /** Größtes Bild in Bytes. Als Base64 ist es ein Drittel länger. */
 const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const MAX_BASE64_CHARS = Math.ceil(MAX_BODY_BYTES / 3) * 4;
 /** Grenzen für gelesene Einträge. Gleich wie in worker/sync.ts und shared/limits.ts. */
-const { MAX_WORD_CHARS, MAX_NOTE_CHARS, MAX_HEADING_CHARS } = LIMITS;
+const { MAX_WORD_CHARS, MAX_NOTE_CHARS, MAX_HEADING_CHARS, MAX_ITEMS_PER_SET } = LIMITS;
 /** Mehr Einträge stehen auf keiner Buchseite. */
 const MAX_ITEMS_PER_PAGE = 200;
-const MAX_PER_DAY = 30;
-const MAX_ITEMS = 400;
 const TIMEOUT_MS = 45_000;
 const RETRY_DELAY_MS = 2000;
-const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 /** Getesteter Prompt aus tools/test_erkennung.py. */
 const PROMPT = `Das Foto zeigt eine Vokabelseite aus einem Französisch-Schulbuch für deutsche Schüler.
@@ -86,20 +84,6 @@ const readingSchema = z.object({
   ),
 });
 
-const answerSchema = z.object({
-  candidates: z
-    .array(
-      z.object({
-        content: z
-          .object({
-            parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() })),
-          })
-          .optional(),
-      }),
-    )
-    .optional(),
-});
-
 class UpstreamError extends Error {
   constructor(
     message: string,
@@ -139,20 +123,12 @@ function geminiBody(mimeType: string, imageBase64: string): string {
   });
 }
 
-/** Diese Antworten sind meist nur vorübergehend. Dann lohnt ein zweiter Versuch. */
-const RETRY_STATUS = [429, 500, 502, 503, 504];
-
 /** Ein einziger Versuch bei Gemini. `onText` bekommt nach jedem Stück den ganzen Text bis jetzt. */
 async function streamOnce(apiKey: string, body: string, onText?: (text: string) => void): Promise<ReadItem[]> {
   let response: Response;
   try {
-    response = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-      body,
-      // Die Frist gilt für den ganzen Strom, nicht nur für den Anfang.
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    // Die Frist gilt für den ganzen Strom, nicht nur für den Anfang.
+    response = await postGemini(GEMINI_URL, apiKey, body, TIMEOUT_MS);
   } catch (error) {
     throw new UpstreamError(`Keine Antwort von Gemini (${error instanceof Error ? error.name : "Fehler"}).`);
   }
@@ -169,12 +145,7 @@ async function streamOnce(apiKey: string, body: string, onText?: (text: string) 
     if (!line.startsWith("data:")) return;
     const json = line.slice(5).trim();
     if (!json) return;
-    const answer = answerSchema.parse(JSON.parse(json));
-    const parts = answer.candidates?.[0]?.content?.parts ?? [];
-    const piece = parts
-      .filter((part) => !part.thought)
-      .map((part) => part.text ?? "")
-      .join("");
+    const piece = answerText(JSON.parse(json));
     if (!piece) return;
     started = true;
     text += piece;
@@ -238,7 +209,7 @@ async function callGemini(apiKey: string, body: string, onText?: (text: string) 
  * Ein zu langer Eintrag würde sonst später den Abgleich blockieren.
  */
 function clean(items: ReadItem[]): ReadItem[] {
-  const cut = (value: string, max: number) => value.replace(/\s+/g, " ").trim().slice(0, max).trim();
+  const cut = (value: string, max: number) => oneLine(value).slice(0, max).trim();
   const out: ReadItem[] = [];
   for (const item of items) {
     const fr = cut(item.fr, MAX_WORD_CHARS);
@@ -258,23 +229,14 @@ function clean(items: ReadItem[]): ReadItem[] {
 /**
  * Liest ein Foto einer Vokabelseite.
  *
- * Der Body ist das rohe Bild. Das Foto wird nur an Gemini weitergereicht und nie gespeichert.
+ * Der Body ist JSON mit dem Bild als Base64. Das Foto wird nur an Gemini weitergereicht und nie gespeichert.
  * Zwei unabhängige Lesungen laufen parallel. Wo sie sich unterscheiden, steht `check: true`.
  */
 extract.post("/extract", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
-  const userId = session.userId;
+  const session = await requireSession(context, db);
 
-  const contentType = (context.req.header("content-type") ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (IMAGE_TYPES.includes(contentType)) {
-    // Eine ältere Fassung der App schickte das rohe Bild. Die Seite muss neu geladen werden.
-    throw new HTTPException(400, { message: "Bitte lade die Seite neu und versuch es noch einmal." });
-  }
-  if (contentType !== "application/json") {
-    throw new HTTPException(415, { message: "Nur JPEG, PNG oder WebP." });
-  }
+  // Dass die Anfrage JSON ist, prüft schon worker/index.ts.
   const declared = Number(context.req.header("content-length") ?? "0");
   if (declared > MAX_BASE64_CHARS + 200) throw new HTTPException(413, { message: "Das Foto ist zu groß." });
 
@@ -292,22 +254,13 @@ extract.post("/extract", async (context) => {
   }
   const { mimeType, data: imageBase64 } = input.data;
 
-  // Der Aufruf wird vor Gemini gezählt. Die Zeile wird nur erhöht, solange das Limit nicht erreicht ist.
-  const day = Math.floor(Date.now() / 86_400_000);
-  const counted = await db
-    .insert(schema.extractLog)
-    .values({ userId, day, count: 1 })
-    .onConflictDoUpdate({
-      target: [schema.extractLog.userId, schema.extractLog.day],
-      set: { count: sql`${schema.extractLog.count} + 1` },
-      setWhere: sql`${schema.extractLog.count} < ${MAX_PER_DAY}`,
-    })
-    .returning({ count: schema.extractLog.count });
-  if (counted.length === 0) {
+  // Der Aufruf wird vor Gemini gezählt.
+  const limit = await spend(db, session.userId, "extract");
+  if (limit === "user") {
     return context.json({ error: "Für heute sind es genug Fotos. Morgen geht es weiter." }, 429);
   }
   // Die Obergrenze für alle Konten zusammen schützt das Budget.
-  if (!(await countGlobal(db, "extract"))) {
+  if (limit === "everyone") {
     return context.json({ error: "Heute wurden schon sehr viele Fotos gelesen. Morgen geht es weiter." }, 429);
   }
 
@@ -317,13 +270,6 @@ extract.post("/extract", async (context) => {
   }
 
   const body = geminiBody(mimeType, imageBase64);
-  const wantsStream = (context.req.header("accept") ?? "").includes("application/x-ndjson");
-
-  if (!wantsStream) {
-    const result = await readPage(apiKey, body);
-    if (!result) return context.json({ error: PAGE_ERROR }, 502);
-    return context.json(result);
-  }
 
   // Der Strom wird sofort zurückgegeben. Die Arbeit läuft weiter und schreibt Zeile für Zeile.
   const { readable, writable } = new TransformStream<Uint8Array>();
@@ -368,19 +314,19 @@ type Settled = { ok: true; value: ReadItem[] } | { ok: false };
 
 /**
  * Zwei Lesungen, zusammengeführt. null heißt: beide sind gescheitert.
- * Mit `emit` kommen Ereignisse für die erste Lesung: `word` je fertigem Stichwort,
+ * Über `emit` kommen Ereignisse für die erste Lesung: `word` je fertigem Stichwort,
  * `compare` sobald sie fertig ist, während die zweite noch läuft.
  */
 async function readPage(
   apiKey: string,
   body: string,
-  emit?: (event: object) => void,
+  emit: (event: object) => void,
 ): Promise<{ items: MergedItem[]; readings: 1 | 2 } | null> {
   let secondSettled = false;
   let sent = 0;
   const onText = (text: string) => {
     const words = partialWords(text);
-    for (; sent < words.length; sent++) emit?.({ type: "word", fr: words[sent], count: sent + 1 });
+    for (; sent < words.length; sent++) emit({ type: "word", fr: words[sent], count: sent + 1 });
   };
   const settle = async (read: Promise<ReadItem[]>, onDone: () => void): Promise<Settled> => {
     try {
@@ -394,8 +340,8 @@ async function readPage(
   };
 
   const [first, second] = await Promise.all([
-    settle(callGemini(apiKey, body, emit ? onText : undefined), () => {
-      if (!secondSettled) emit?.({ type: "compare" });
+    settle(callGemini(apiKey, body, onText), () => {
+      if (!secondSettled) emit({ type: "compare" });
     }),
     settle(callGemini(apiKey, body), () => {
       secondSettled = true;
@@ -403,10 +349,10 @@ async function readPage(
   ]);
 
   if (first.ok && second.ok) {
-    return { items: mergeReadings(clean(first.value), clean(second.value)).slice(0, MAX_ITEMS), readings: 2 };
+    return { items: mergeReadings(clean(first.value), clean(second.value)).slice(0, MAX_ITEMS_PER_SET), readings: 2 };
   }
-  const only = first.ok ? first : second.ok ? second : null;
-  if (!only || !only.ok) return null;
+  const only = first.ok ? first : second;
+  if (!only.ok) return null;
   const items = clean(only.value).map((item) => ({ ...item, check: false }));
-  return { items: items.slice(0, MAX_ITEMS), readings: 1 };
+  return { items: items.slice(0, MAX_ITEMS_PER_SET), readings: 1 };
 }

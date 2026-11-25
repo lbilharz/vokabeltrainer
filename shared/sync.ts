@@ -6,7 +6,7 @@
  * Alles hier ist rein und verändert seine Eingaben nicht.
  */
 
-import type { Progress } from "./types";
+import type { Progress, SetDoc } from "./types";
 
 export interface SyncCard {
   id: string;
@@ -41,19 +41,6 @@ export function touch(sync: SyncState, id: string, now: number): SyncState {
     stamps: { ...sync.stamps, [id]: now },
     dirty: sync.dirty.includes(id) ? sync.dirty : [...sync.dirty, id],
   };
-}
-
-/** Alle vorhandenen Karten gelten als ungesendet. Es werden keine Stempel erfunden. */
-export function markAllDirty(cards: Progress, sync: SyncState): SyncState {
-  const dirty = [...sync.dirty];
-  const known = new Set(dirty);
-  for (const id of Object.keys(cards)) {
-    if (!known.has(id)) {
-      known.add(id);
-      dirty.push(id);
-    }
-  }
-  return { ...sync, dirty };
 }
 
 /** Die Karten, die beim nächsten Abgleich zum Server gehen. */
@@ -102,4 +89,19 @@ export function applyResponse(
       since: serverNow,
     },
   };
+}
+
+/**
+ * Arbeitet Lektionen vom Server ein. Je Lektion gewinnt die jüngere Änderung, wie bei den Karten.
+ * Ohne Änderung kommt dasselbe Objekt zurück. Sonst rechnet die App bei jedem Abgleich alles neu.
+ */
+export function mergeSets(local: Record<string, SetDoc>, incoming: SetDoc[]): Record<string, SetDoc> {
+  let merged = local;
+  for (const doc of incoming) {
+    const known = merged[doc.id];
+    if (known && (doc.t < known.t || (doc.t === known.t && doc.deleted === known.deleted))) continue;
+    if (merged === local) merged = { ...local };
+    merged[doc.id] = doc;
+  }
+  return merged;
 }

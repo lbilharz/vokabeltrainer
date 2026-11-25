@@ -1,9 +1,10 @@
 /** Konto, Passkey-Geräte und Abgleich. Spricht mit dem Worker. */
 
+import type { CheckKind, MergedItem } from "@shared/extract";
 import type { SyncCard } from "@shared/sync";
 import type { SetDoc } from "@shared/types";
 import { ApiError, apiDelete, apiGet, apiPost } from "./api";
-import { APP_VERSION, VERSION_HEADER } from "./version";
+import { APP_VERSION, VERSION_HEADER, noteServerVersion } from "./version";
 import {
   createPasskey,
   usePasskey,
@@ -37,8 +38,7 @@ export interface SyncMeta {
 }
 
 export interface SyncResponse {
-  /** Fehlt bei einem älteren Server. */
-  sets?: SetDoc[];
+  sets: SetDoc[];
   now: number;
   cards: SyncCard[];
   meta: SyncMeta | null;
@@ -159,13 +159,7 @@ export function postSync(
 }
 
 /** Ein gelesener Eintrag. `check` heisst: die zwei Lesungen waren sich nicht einig. */
-export interface ExtractedItem {
-  c: string | null;
-  fr: string;
-  de: string;
-  n: string | null;
-  check: boolean;
-}
+export type ExtractedItem = MergedItem;
 
 export interface ExtractResponse {
   items: ExtractedItem[];
@@ -173,8 +167,7 @@ export interface ExtractResponse {
   readings: 1 | 2;
 }
 
-/** Warum die Gegenprobe eine Zeile verdächtig findet. */
-export type CheckKind = "schreibweise" | "passt_nicht" | "verschmolzen";
+export type { CheckKind };
 
 /**
  * Gegenprobe: ein zweites Modell prüft, ob die Wortpaare zusammenpassen.
@@ -300,24 +293,21 @@ export async function extractPhoto(
       if (xhr.status === 200 && streamed()) drain();
     };
     xhr.onload = () => {
+      noteServerVersion(xhr.getResponseHeader(VERSION_HEADER));
       if (xhr.status === 200 && streamed()) {
         drain();
         // Die Verbindung ist zu Ende, aber das Ergebnis kam nie.
         finish(new ApiError(`${fallback} Versuch es noch einmal.`, 502));
         return;
       }
-      // Fehler vor dem Lesen und Antworten eines älteren Servers kommen als ein JSON-Block.
-      let payload: (ExtractResponse & { error?: string }) | null = null;
+      // Fehler vor dem Lesen kommen als ein JSON-Block mit { error }.
+      let payload: { error?: string } | null = null;
       try {
-        payload = JSON.parse(xhr.responseText) as ExtractResponse & { error?: string };
+        payload = JSON.parse(xhr.responseText) as { error?: string };
       } catch {
         // Keine lesbare Antwort.
       }
-      if (xhr.status < 200 || xhr.status >= 300 || !payload) {
-        finish(new ApiError(payload?.error ?? fallback, xhr.status));
-      } else {
-        finish(payload);
-      }
+      finish(new ApiError(payload?.error ?? fallback, xhr.status));
     };
     xhr.onerror = () => finish(new Error("Keine Verbindung. Versuch es noch einmal."));
     xhr.ontimeout = () => finish(new ApiError(`${fallback} Versuch es noch einmal.`, 504));

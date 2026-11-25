@@ -1,11 +1,10 @@
 import { sql } from "drizzle-orm";
-import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { DAY_MS } from "../shared/dates";
 import * as schema from "./db/schema";
-
-type Database = DrizzleD1Database<typeof schema>;
+import type { Database } from "./session";
 
 /** Der Zähler für alle Konten zusammen. */
-export const EVERYONE = "*";
+const EVERYONE = "*";
 
 /**
  * Obergrenzen pro Tag für alle Konten zusammen.
@@ -22,11 +21,15 @@ export const GLOBAL_PER_DAY = {
   audio: 1000,
 } as const;
 
-/** So viele Gegenproben darf ein Konto am Tag auslösen. Ein Foto braucht eine. */
-export const CHECKS_PER_USER = 60;
-
-/** So viele Urteile darf ein Konto am Tag auslösen. Treffer im Speicher zählen nicht. */
-export const JUDGES_PER_USER = 150;
+/** So viel darf ein einzelnes Konto am Tag auslösen. */
+export const USER_PER_DAY = {
+  extract: 30,
+  /** Ein Foto braucht eine Gegenprobe. */
+  check: 60,
+  /** Treffer im Speicher zählen nicht. */
+  judge: 150,
+  audio: 400,
+} as const;
 
 export type UsageKind = keyof typeof GLOBAL_PER_DAY;
 
@@ -35,8 +38,8 @@ export type UsageKind = keyof typeof GLOBAL_PER_DAY;
  * Die Zeile wird in einem Schritt geprüft und erhöht. Zwei gleichzeitige Anfragen können das Limit nicht überspringen.
  * false heisst: Limit erreicht, nichts gezählt.
  */
-export async function countUse(db: Database, scope: string, kind: UsageKind, limit: number): Promise<boolean> {
-  const day = Math.floor(Date.now() / 86_400_000);
+async function countUse(db: Database, scope: string, kind: UsageKind, limit: number): Promise<boolean> {
+  const day = Math.floor(Date.now() / DAY_MS);
   const counted = await db
     .insert(schema.usageLog)
     .values({ scope, kind, day, count: 1 })
@@ -49,7 +52,14 @@ export async function countUse(db: Database, scope: string, kind: UsageKind, lim
   return counted.length > 0;
 }
 
-/** Zählt einen Aufruf gegen die Obergrenze für alle Konten. */
-export function countGlobal(db: Database, kind: UsageKind): Promise<boolean> {
-  return countUse(db, EVERYONE, kind, GLOBAL_PER_DAY[kind]);
+/**
+ * Zählt einen bezahlten Aufruf. Immer vor dem Aufruf beim Anbieter.
+ *
+ * Erst zählt das Konto, dann die Obergrenze für alle. Ist das Konto am Limit, wird für alle nichts gezählt.
+ * "ok" heisst: gezählt, der Aufruf darf laufen. Sonst steht da, welche Grenze erreicht ist.
+ */
+export async function spend(db: Database, userId: string, kind: UsageKind): Promise<"ok" | "user" | "everyone"> {
+  if (!(await countUse(db, userId, kind, USER_PER_DAY[kind]))) return "user";
+  if (!(await countUse(db, EVERYONE, kind, GLOBAL_PER_DAY[kind]))) return "everyone";
+  return "ok";
 }

@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyResponse,
   emptySync,
-  markAllDirty,
+  mergeSets,
   outgoing,
   touch,
   type SyncCard,
   type SyncState,
 } from "./sync";
-import type { Progress } from "./types";
+import type { Progress, SetDoc } from "./types";
 
 const card = (box: number, due = 10, seen = true) => ({ box, due, seen });
 
@@ -48,33 +48,6 @@ describe("touch", () => {
   });
 });
 
-describe("markAllDirty", () => {
-  it("macht jede Karte ungesendet, ohne Stempel zu erfinden", () => {
-    const cards: Progress = { a: card(1), b: card(2) };
-    const next = markAllDirty(cards, emptySync());
-    expect(next.dirty.sort()).toEqual(["a", "b"]);
-    expect(next.stamps).toEqual({});
-  });
-
-  it("behält vorhandene Stempel und doppelt nichts", () => {
-    const cards: Progress = { a: card(1), b: card(2) };
-    const sync: SyncState = { stamps: { a: 42 }, dirty: ["a"], since: 3 };
-    const next = markAllDirty(cards, sync);
-    expect(next.stamps).toEqual({ a: 42 });
-    expect(next.dirty.filter((id) => id === "a")).toHaveLength(1);
-    expect(next.dirty).toContain("b");
-    expect(next.since).toBe(3);
-  });
-
-  it("verändert die Eingaben nicht", () => {
-    const cards: Progress = { a: card(1) };
-    const sync = emptySync();
-    markAllDirty(cards, sync);
-    expect(sync).toEqual(emptySync());
-    expect(cards).toEqual({ a: card(1) });
-  });
-});
-
 describe("outgoing", () => {
   it("liefert eine SyncCard je ungesendeter Karte", () => {
     const cards: Progress = { a: card(3, 12, true) };
@@ -88,7 +61,7 @@ describe("outgoing", () => {
   });
 
   it("nimmt t = 1 ohne Stempel", () => {
-    const sync = markAllDirty({ a: card(2) }, emptySync());
+    const sync: SyncState = { ...emptySync(), dirty: ["a"] };
     expect(outgoing({ a: card(2) }, sync)[0].t).toBe(1);
   });
 
@@ -148,7 +121,7 @@ describe("applyResponse", () => {
 
   it("gesendete Karte ohne Stempel (t = 1) verlässt dirty ebenfalls", () => {
     const cards: Progress = { a: card(2) };
-    const sync = markAllDirty(cards, emptySync());
+    const sync: SyncState = { ...emptySync(), dirty: ["a"] };
     const pushed = outgoing(cards, sync);
     const res = applyResponse(cards, sync, pushed, [], 500);
     expect(res.sync.dirty).toEqual([]);
@@ -270,5 +243,34 @@ describe("Abgleich zweier Geräte", () => {
     a.run();
     expect(a.device.cards.x.box).toBe(5);
     expect(a.device.sync.dirty).toEqual([]);
+  });
+});
+
+describe("mergeSets", () => {
+  const doc = (id: string, t: number, deleted = false): SetDoc => ({
+    id,
+    t,
+    deleted,
+    data: deleted ? null : { label: id, unit: ["Wort", "Wörter"], items: [], createdAt: 1 },
+  });
+
+  it("gibt dasselbe Objekt zurück, wenn nichts Neues kommt", () => {
+    const local = { a: doc("a", 5) };
+    expect(mergeSets(local, [])).toBe(local);
+    expect(mergeSets(local, [doc("a", 5)])).toBe(local);
+    expect(mergeSets(local, [doc("a", 4)])).toBe(local);
+  });
+
+  it("nimmt eine neue und eine jüngere Lektion", () => {
+    const local = { a: doc("a", 5) };
+    const merged = mergeSets(local, [doc("a", 6), doc("b", 1)]);
+    expect(merged.a!.t).toBe(6);
+    expect(merged.b!.t).toBe(1);
+    expect(local).toEqual({ a: doc("a", 5) });
+  });
+
+  it("nimmt bei gleicher Zeit die Fassung vom Server, wenn sie beim Löschen abweicht", () => {
+    const local = { a: doc("a", 5) };
+    expect(mergeSets(local, [doc("a", 5, true)]).a!.deleted).toBe(true);
   });
 });

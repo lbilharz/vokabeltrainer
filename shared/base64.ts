@@ -1,13 +1,14 @@
 /**
- * Base64url für den Worker.
+ * Base64url für App und Worker.
  *
- * WebAuthn spricht durchgehend base64url, und der öffentliche Schlüssel
+ * WebAuthn und Web Push sprechen durchgehend base64url, und der öffentliche Schlüssel
  * liegt so in D1. Ein einziger Ort dafür, damit das Padding nicht streitet.
  */
 
-export function toBase64Url(input: Uint8Array<ArrayBufferLike>): string {
+export function toBase64Url(input: Uint8Array<ArrayBufferLike> | ArrayBuffer): string {
+  const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
   let binary = "";
-  for (const byte of input) binary += String.fromCharCode(byte);
+  for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 

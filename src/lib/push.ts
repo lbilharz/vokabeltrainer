@@ -1,5 +1,5 @@
-import { apiGet, apiPost } from "./api";
-import { APP_VERSION, VERSION_HEADER } from "./version";
+import { fromBase64Url } from "@shared/base64";
+import { apiDelete, apiGet, apiPost, apiPut } from "./api";
 
 /**
  * Die tägliche Erinnerung per Mitteilung.
@@ -34,14 +34,6 @@ async function registration(): Promise<ServiceWorkerRegistration | null> {
   return (await navigator.serviceWorker.getRegistration()) ?? null;
 }
 
-function toBytes(base64url: string): Uint8Array<ArrayBuffer> {
-  const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
-  const binary = atob(base64 + "=".repeat((4 - (base64.length % 4)) % 4));
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
 export async function readPushState(): Promise<PushState> {
   const configured = await apiGet<{ key: string }>("/api/push/key").then(
     () => true,
@@ -54,7 +46,7 @@ export async function readPushState(): Promise<PushState> {
   try {
     const subscription = await reg.pushManager.getSubscription();
     if (!subscription) return { ...off, supported: true, blocked };
-    const state = await apiPost<{ enabled: boolean; hour: number | null; minute?: number | null }>(
+    const state = await apiPost<{ enabled: boolean; hour: number | null; minute: number | null }>(
       "/api/push/state",
       { endpoint: subscription.endpoint },
     );
@@ -76,25 +68,19 @@ export async function enablePush(time: number): Promise<void> {
   const { key } = await apiGet<{ key: string }>("/api/push/key");
   const subscription =
     (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toBytes(key) }));
-  await fetch("/api/push", {
-    method: "PUT",
-    headers: { "content-type": "application/json", [VERSION_HEADER]: APP_VERSION },
-    body: JSON.stringify({ endpoint: subscription.endpoint, hour: Math.floor(time / 60), minute: time % 60 }),
-  }).then((response) => {
-    if (!response.ok) throw new Error("Die Erinnerung konnte nicht gespeichert werden.");
-  });
+    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(key) }));
+  await apiPut("/api/push", { endpoint: subscription.endpoint, hour: Math.floor(time / 60), minute: time % 60 }).catch(
+    () => {
+      throw new Error("Die Erinnerung konnte nicht gespeichert werden.");
+    },
+  );
 }
 
 export async function disablePush(): Promise<void> {
   const reg = await registration();
   const subscription = await reg?.pushManager.getSubscription();
   if (!subscription) return;
-  await fetch("/api/push", {
-    method: "DELETE",
-    headers: { "content-type": "application/json", [VERSION_HEADER]: APP_VERSION },
-    body: JSON.stringify({ endpoint: subscription.endpoint }),
-  }).catch(() => {
+  await apiDelete("/api/push", { endpoint: subscription.endpoint }).catch(() => {
     // Ohne Netz bleibt der Eintrag beim Server. Das Gerät meldet sich trotzdem ab.
   });
   await subscription.unsubscribe();

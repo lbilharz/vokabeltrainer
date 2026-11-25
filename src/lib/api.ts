@@ -36,4 +36,5 @@ export const apiPost = <T,>(path: string, body?: unknown, init?: RequestInit): P
 export const apiPut = <T,>(path: string, body?: unknown): Promise<T> =>
   request<T>(path, { method: "PUT", body: JSON.stringify(body ?? {}) });
 
-export const apiDelete = <T,>(path: string): Promise<T> => request<T>(path, { method: "DELETE" });
+export const apiDelete = <T,>(path: string, body?: unknown): Promise<T> =>
+  request<T>(path, { method: "DELETE", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });

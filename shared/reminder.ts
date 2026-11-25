@@ -1,6 +1,7 @@
 /** Reine Logik für die tägliche Übungserinnerung. Läuft im Worker und in Tests. */
 
-const DAY_MS = 86_400_000;
+import { DAY_MS } from "./dates";
+
 const ZONE = "Europe/Berlin";
 
 const formatter = new Intl.DateTimeFormat("en-CA", {

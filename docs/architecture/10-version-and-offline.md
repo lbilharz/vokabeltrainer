@@ -37,4 +37,4 @@ Each build gets a UTC timestamp as version, for example `20261123.160500`. Vite 
 **Reason:** After an update the app sometimes still showed the old version for one more start. On the server it was not visible which version asked.
 **Trade-off:** An update needs one network call. Offline, the old version stays, and the next start tries again.
 
-An older app that sends the raw image to `/api/extract` gets the hint to reload the page.
+A writing request that is not JSON gets status 415 and the hint to reload the page (`worker/index.ts`). This also covers a very old app that sent the raw image to `/api/extract`.

@@ -1,12 +1,11 @@
 import { Hono } from "hono";
-import { HTTPException } from "hono/http-exception";
 import { drizzle } from "drizzle-orm/d1";
-import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { LIMITS } from "../shared/limits";
 import { fnv1a, sayText } from "../shared/text";
 import * as schema from "./db/schema";
-import { readSession } from "./session";
-import { countGlobal } from "./usage";
+import { requireSession } from "./session";
+import { spend } from "./usage";
 
 export const audio = new Hono<{ Bindings: Env }>();
 
@@ -18,11 +17,10 @@ const SPEED = 0.95;
 const ELEVENLABS_URL = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=${OUTPUT_FORMAT}`;
 
 const MAX_RENDERS_PER_CALL = 3;
-const MAX_PER_DAY = 400;
 const TIMEOUT_MS = 30_000;
 
 const requestSchema = z.object({
-  texts: z.array(z.string().min(1).max(200)).min(1).max(10),
+  texts: z.array(z.string().min(1).max(LIMITS.MAX_AUDIO_CHARS)).min(1).max(LIMITS.MAX_AUDIO_TEXTS),
 });
 
 type Stopped = "limit" | "unconfigured" | "failed";
@@ -64,34 +62,24 @@ async function renderOne(apiKey: string, text: string): Promise<ArrayBuffer | nu
  */
 audio.post("/audio/ensure", async (context) => {
   const db = drizzle(context.env.DB, { schema });
-  const session = await readSession(context, db);
-  if (!session) throw new HTTPException(401, { message: "Nicht angemeldet." });
-  const userId = session.userId;
+  const session = await requireSession(context, db);
 
-  let body: unknown;
-  try {
-    body = await context.req.json();
-  } catch {
-    throw new HTTPException(400, { message: "Ungültige Anfrage." });
-  }
-  const input = requestSchema.safeParse(body);
-  if (!input.success) throw new HTTPException(400, { message: "Ungültige Anfrage." });
+  // Kaputtes JSON und falsche Felder werden in worker/index.ts zu 400.
+  const { texts } = requestSchema.parse(await context.req.json());
 
   // Pro Hash ein Text. Der Hash gilt für den Text genau so, wie er kam.
   const byHash = new Map<string, string>();
-  for (const text of input.data.texts) {
+  for (const text of texts) {
     if (!sayText(text, "fr")) continue; // Nichts zu sprechen.
     const hash = fnv1a(text);
     if (!byHash.has(hash)) byHash.set(hash, text);
   }
 
-  const ready: string[] = [];
-  const missing: string[] = [];
-  for (const hash of byHash.keys()) {
-    const head = await context.env.AUDIO.head(`fr/${hash}.mp3`);
-    if (head) ready.push(hash);
-    else missing.push(hash);
-  }
+  // Alle Nachfragen beim Speicher laufen zugleich.
+  const hashes = [...byHash.keys()];
+  const heads = await Promise.all(hashes.map((hash) => context.env.AUDIO.head(`fr/${hash}.mp3`)));
+  const ready = hashes.filter((_, index) => heads[index]);
+  const missing = hashes.filter((_, index) => !heads[index]);
 
   const pending: string[] = [];
   let stopped: Stopped | undefined;
@@ -112,18 +100,8 @@ audio.post("/audio/ensure", async (context) => {
       break;
     }
 
-    // Der Aufruf wird vor ElevenLabs gezählt. Die Zeile wird nur erhöht, solange das Limit nicht erreicht ist.
-    const day = Math.floor(Date.now() / 86_400_000);
-    const counted = await db
-      .insert(schema.audioLog)
-      .values({ userId, day, count: 1 })
-      .onConflictDoUpdate({
-        target: [schema.audioLog.userId, schema.audioLog.day],
-        set: { count: sql`${schema.audioLog.count} + 1` },
-        setWhere: sql`${schema.audioLog.count} < ${MAX_PER_DAY}`,
-      })
-      .returning({ count: schema.audioLog.count });
-    if (counted.length === 0 || !(await countGlobal(db, "audio"))) {
+    // Der Aufruf wird vor ElevenLabs gezählt.
+    if ((await spend(db, session.userId, "audio")) !== "ok") {
       pending.push(...rest());
       stopped = "limit";
       break;

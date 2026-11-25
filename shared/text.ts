@@ -41,6 +41,11 @@ export function sayText(s: string, lang: Lang): string {
     .replace(/^[,\s]+|[,\s]+$/g, "");
 }
 
+// Ein Text in eine Zeile: Umbrüche und mehrere Leerzeichen werden zu einem Leerzeichen.
+export function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
 // Antwort vergleichbar machen: klein, ohne Satzzeichen und Auslassungspunkte.
 export function norm(s: string): string {
   return s

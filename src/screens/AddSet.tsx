@@ -11,9 +11,9 @@ interface Props {
   onClose: () => void;
 }
 
-interface Row extends ExtractedItem {
+interface Row extends Omit<ExtractedItem, "check"> {
   key: number;
-  /** Warum die Zeile gelb ist. Steht über dem Wort. */
+  /** Warum die Zeile gelb ist. Steht über dem Wort. Ohne Grund ist die Zeile nicht markiert. */
   reason?: string;
 }
 
@@ -72,7 +72,7 @@ export function AddSet({ onSave, onClose }: Props) {
             const sent = page.find((p) => p.key === row.key);
             // Hat das Kind die Zeile inzwischen geändert, gilt die Gegenprobe nicht mehr.
             if (!kind || !sent || sent.fr !== row.fr || sent.de !== row.de) return row;
-            return { ...row, check: true, reason: row.reason ?? CHECK_TEXT[kind] };
+            return { ...row, reason: row.reason ?? CHECK_TEXT[kind] };
           }),
         );
       })
@@ -116,10 +116,10 @@ export function AddSet({ onSave, onClose }: Props) {
           throw new Error("Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.");
         }
         if (result.readings === 1) setSingle(true);
-        const rowsOfPage: Row[] = result.items.map((item) => ({
+        const rowsOfPage: Row[] = result.items.map(({ check, ...item }) => ({
           ...item,
           key: nextKey.current++,
-          reason: item.check ? DIFFERENT_READINGS : undefined,
+          reason: check ? DIFFERENT_READINGS : undefined,
         }));
         setRows((prev) => [...prev, ...rowsOfPage]);
         runCheck(rowsOfPage);
@@ -137,12 +137,12 @@ export function AddSet({ onSave, onClose }: Props) {
 
   const change = (key: number, field: "fr" | "de", value: string) =>
     setRows((prev) =>
-      prev.map((row) => (row.key === key ? { ...row, [field]: value, check: false, reason: undefined } : row)),
+      prev.map((row) => (row.key === key ? { ...row, [field]: value, reason: undefined } : row)),
     );
   const remove = (key: number) => setRows((prev) => prev.filter((row) => row.key !== key));
 
   const valid = rows.filter((row) => row.fr.trim() && row.de.trim());
-  const toCheck = rows.filter((row) => row.check).length;
+  const toCheck = rows.filter((row) => row.reason).length;
 
   // Der Abgleich nimmt keine größere Lektion an. Was darüber liegt, wird nicht übernommen.
   const kept = valid.slice(0, LIMITS.MAX_ITEMS_PER_SET);
@@ -257,7 +257,7 @@ export function AddSet({ onSave, onClose }: Props) {
             id="setname"
             type="text"
             value={label}
-            maxLength={60}
+            maxLength={LIMITS.MAX_LABEL_CHARS}
             placeholder="Unité 2, Volet 3"
             onChange={(event) => setLabel(event.target.value)}
           />
@@ -265,9 +265,9 @@ export function AddSet({ onSave, onClose }: Props) {
 
         <ul className="rows">
           {rows.map((row, index) => (
-            <li key={row.key} className={row.check ? "row check" : "row"}>
+            <li key={row.key} className={row.reason ? "row check" : "row"}>
               <div className="row-fields">
-                {row.check && <span className="row-flag">{row.reason ?? "Bitte prüfen"}</span>}
+                {row.reason && <span className="row-flag">{row.reason}</span>}
                 <input
                   className="row-fr"
                   type="text"

@@ -4,20 +4,7 @@
  * Der Passkey ist hier nur der Login. Es gibt keine Schlüsselableitung.
  */
 
-type Bytes = Uint8Array<ArrayBuffer>;
-
-function toBase64Url(input: Uint8Array<ArrayBufferLike> | ArrayBuffer): string {
-  const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function fromBase64Url(value: string): Bytes {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
-  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, "="));
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
+import { fromBase64Url, toBase64Url } from "@shared/base64";
 
 export class PasskeyError extends Error {
   constructor(message: string) {

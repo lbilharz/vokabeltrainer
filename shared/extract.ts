@@ -13,6 +13,10 @@ export interface MergedItem extends ReadItem {
   check: boolean;
 }
 
+/** Warum die Gegenprobe eine Zeile verdächtig findet. */
+export const CHECK_KINDS = ["schreibweise", "passt_nicht", "verschmolzen"] as const;
+export type CheckKind = (typeof CHECK_KINDS)[number];
+
 /** Vergleichsschlüssel. Leerzeichen um den Schrägstrich spielen keine Rolle. */
 function key(s: string): string {
   return norm(s.replace(/\s*\/\s*/g, "/"));

@@ -48,6 +48,23 @@ function count(n: number, unit: [string, string]): string {
   return `${n} ${n === 1 ? unit[0] : unit[1]}`;
 }
 
+/** Anteil in Prozent für die Breite eines Balkens. */
+function percent(part: number, total: number): number {
+  return total ? (part / total) * 100 : 0;
+}
+
+/** Was die Test-Karte zeigt. */
+function testCardFor(focus: Focus, focusSet: SetView, today: number) {
+  const round = roundKind(focus, today);
+  return {
+    focusSet,
+    total: focusSet.items.length,
+    sure: sureCount(focus, focusSet.items),
+    round,
+    canPractice: round === "rehearsal" || practiceItems(focusSet.items, focus).length > 0,
+  };
+}
+
 export function Home(props: Props) {
   const { sets, active, progress, today, plan } = props;
   /** null: der Name wird nur angezeigt. Sonst der Text im Eingabefeld. */
@@ -115,16 +132,7 @@ export function Home(props: Props) {
   // Die Test-Karte gehört zur Fokus-Lektion, auch wenn eine andere gerade aktuell ist.
   const { focus } = props;
   const focusSet = focus ? sets.find((set) => set.id === focus.setId) : undefined;
-  const testCard =
-    focus && focusSet
-      ? (() => {
-          const total = focusSet.items.length;
-          const sure = sureCount(focus, focusSet.items);
-          const round = roundKind(focus, today);
-          const canPractice = round === "rehearsal" || practiceItems(focusSet.items, focus).length > 0;
-          return { total, sure, round, canPractice, focusSet };
-        })()
-      : null;
+  const testCard = focus && focusSet ? testCardFor(focus, focusSet, today) : null;
   const activeChip = focus && focus.setId === active.id ? testChip(focus.day, today) : null;
 
   return (
@@ -182,10 +190,7 @@ export function Home(props: Props) {
             role="img"
             aria-label={`${sureLine(testCard.sure, testCard.total)} für den Test`}
           >
-            <div
-              className="bar-fill"
-              style={{ width: `${testCard.total ? (testCard.sure / testCard.total) * 100 : 0}%` }}
-            />
+            <div className="bar-fill" style={{ width: `${percent(testCard.sure, testCard.total)}%` }} />
           </div>
           <div className="test-card-foot">
             <span>{sureLine(testCard.sure, testCard.total)}</span>
@@ -211,14 +216,8 @@ export function Home(props: Props) {
           role="img"
           aria-label={`${vocabulary.practised} von ${vocabulary.total} geübt, ${vocabulary.mastered} sitzen`}
         >
-          <div
-            className="bar-fill soft"
-            style={{ width: `${vocabulary.total ? (vocabulary.practised / vocabulary.total) * 100 : 0}%` }}
-          />
-          <div
-            className="bar-fill"
-            style={{ width: `${vocabulary.total ? (vocabulary.mastered / vocabulary.total) * 100 : 0}%` }}
-          />
+          <div className="bar-fill soft" style={{ width: `${percent(vocabulary.practised, vocabulary.total)}%` }} />
+          <div className="bar-fill" style={{ width: `${percent(vocabulary.mastered, vocabulary.total)}%` }} />
         </div>
         <p className="set-progress">{vocabularyLine(vocabulary)}</p>
       </section>
