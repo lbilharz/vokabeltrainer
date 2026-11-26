@@ -15,6 +15,8 @@ A child had a biology test in the following week. The material was ten photos: h
 5. **Review page.** Cards are grouped by photo, with the quote from the page. A whole page can be removed.
 6. **Practice screen.** A new task kind `recall`. The next card comes at once, the feedback sheet only for a streak or "Das sitzt jetzt.".
 
+7. **First real use, first fix.** A card asked "Welche Bereiche und Strukturen des Gehirns sind in der Skizze beschriftet?". Without the sketch that is nonsense. The prompt now demands that every card makes sense without the page. A retest on four pages gave no card that points at the page.
+
 ## Decisions and reasons
 
 - **Reuse the vocabulary entry fields.** Sync, boxes, stations, daily plan and test focus work unchanged. That made the change small enough for one evening.

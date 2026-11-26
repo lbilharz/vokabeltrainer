@@ -23,6 +23,7 @@ A lesson can hold study cards instead of vocabulary. The example is material for
 5. The quote is not stored with the lesson. It only serves the review.
 
 Rules of the prompt: take only what is on the page, invent nothing, make no card from an unreadable spot, no cards from instructions, measured values, names or dates.
+Every card must make sense without the page, because the child does not see the photo while practising. So a card never says "in der Skizze" or "laut Text". A labelled sketch becomes a question for the parts and names how many are wanted.
 
 A lesson holds either vocabulary or cards. The first photo decides. A photo of the other kind is rejected with a message.
 Up to ten photos are read in one go, one after another.
@@ -52,7 +53,7 @@ The task kind is `recall` (`shared/session.ts`). A card lesson knows no other ki
 ## Limits
 
 - The lesson list names the subject of a card lesson, for example "Biologie · heute fotografiert". Home and other screens still use "Wortschatz" and "Wörter".
-- A labelled sketch becomes a question that asks for all labels. There is no labelling task.
+- A labelled sketch becomes one question that asks for all parts by name. There is no labelling task, and the app does not keep the picture.
 - The notes of a student can be wrong or thin. The model copies them. The app then trains them.
 - The model sometimes adds a few words that are not on the page. The prompt forbids it, the review page is the safety net.
 - An older app version shows a card lesson as vocabulary and would ask the child to type the answers.

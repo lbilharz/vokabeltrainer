@@ -158,6 +158,11 @@ Regeln:
 - Zu jeder Karte gehört "beleg": die Stelle auf der Seite in wenigen Wörtern, so wie sie dort steht.
 - Ist eine Stelle nicht sicher lesbar, mache daraus keine Karte. Schreibe sie in "unsicher".
 - Arbeitsaufträge, Messwerte einzelner Schüler, Namen und Datumsangaben sind kein Lernstoff.
+- Jede Karte muss ohne die Seite verständlich sein. Die Schülerin sieht beim Üben das Foto nicht.
+  Schreibe deshalb nie "in der Skizze", "auf dem Bild", "im Text", "laut Text", "auf dem Arbeitsblatt" oder "in der Tabelle".
+  Frage nach der Sache selbst. Statt "Was ist in der Skizze beschriftet?" fragst du "Nenne acht Teile des Gehirns."
+- Bei einer beschrifteten Skizze fragst du nach den Teilen und ihren Namen. Nenne in der Frage, wie viele Teile gesucht sind.
+  Was nur mit dem Bild Sinn ergibt, zum Beispiel die Lage eines Teils, eine Farbe oder ein Pfeil, wird keine Karte.
 - Lieber wenige gute Karten als viele. Eine Seite ohne Lernstoff bekommt keine Karten.
 - Schreibe einfach, in ganzen deutschen Sätzen, für eine Fünfzehnjährige.
 - "fach" ist ein einzelnes Wort wie "Biologie". "thema" hat höchstens sechs Wörter.`;
