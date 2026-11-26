@@ -23,8 +23,11 @@ export const PRACTICE_LIMIT = 20;
 /** Der Test darf höchstens so viele Tage voraus liegen. */
 export const FOCUS_MAX_AHEAD = 60;
 
-/** Aufgaben, bei denen das Kind das Wort selbst schreibt. Nur sie ändern, was "sicher" ist. */
-const WRITTEN_KINDS: ReadonlySet<string> = new Set(["type", "gap", "listenType"]);
+/**
+ * Aufgaben, bei denen das Kind das Wort selbst schreibt. Nur sie ändern, was "sicher" ist.
+ * Bei Lernkarten zählt das Aufdecken mit "Gewusst" (recall). Mehr gibt es dort nicht.
+ */
+const WRITTEN_KINDS: ReadonlySet<string> = new Set(["type", "gap", "listenType", "recall"]);
 
 /** Was an einem Wort in einer Runde nicht stimmte. */
 export type WeakReason = "accents" | "typo" | "article" | "unknown";

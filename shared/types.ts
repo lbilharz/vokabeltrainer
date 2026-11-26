@@ -27,6 +27,12 @@ export interface Item extends RawItem {
   setId: string;
   /** Die Sprache der Lektion. */
   lang: Foreign;
+  /**
+   * true: eine Lernkarte aus einem Sachfach, zum Beispiel Biologie.
+   * `de` ist dann die Vorderseite (Frage oder Erklärung), `fr` die Rückseite (Antwort), `n` die Stichpunkte.
+   * Solche Karten werden nicht getippt und nicht vorgelesen. Das Kind deckt auf und sagt selbst, ob es die Antwort wusste.
+   */
+  cards?: boolean;
 }
 
 /** Lernstand einer Karte (Leitner-System). */
@@ -52,6 +58,10 @@ export interface SetData {
   createdAt: number;
   /** Die Sprache der Lektion. Fehlt sie, ist es Französisch. */
   lang?: Foreign;
+  /** "cards": Lernkarten aus einem Sachfach statt Vokabeln. Fehlt die Angabe, sind es Vokabeln. */
+  kind?: "cards";
+  /** Das Fach einer Lektion mit Lernkarten, zum Beispiel "Biologie". */
+  subject?: string;
 }
 
 /** Ein Set im Abgleich. Gelöschte Sets bleiben als leerer Eintrag stehen, damit die Löschung mitwandert. */

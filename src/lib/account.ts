@@ -159,8 +159,11 @@ export function postSync(
   return apiPost<SyncResponse>("/api/sync", { since, cards, ...(meta ? { meta } : {}), sets });
 }
 
-/** Ein gelesener Eintrag. `check` heisst: die zwei Lesungen waren sich nicht einig. */
-export type ExtractedItem = MergedItem;
+/**
+ * Ein gelesener Eintrag. `check` heisst: die zwei Lesungen waren sich nicht einig.
+ * `beleg` gibt es nur bei Lernkarten: die Stelle auf der Seite, aus der die Karte stammt.
+ */
+export type ExtractedItem = MergedItem & { beleg?: string };
 
 export interface ExtractResponse {
   items: ExtractedItem[];
@@ -168,6 +171,10 @@ export interface ExtractResponse {
   readings: 1 | 2;
   /** Die Sprache, die der Server auf der Seite erkannt hat. */
   lang: Foreign;
+  /** true: Die Seite zeigt Lernstoff. Die Einträge sind Lernkarten: `de` vorne, `fr` hinten, `n` Stichpunkte. */
+  cards: boolean;
+  /** Das Fach bei Lernkarten, zum Beispiel "Biologie". */
+  subject: string;
 }
 
 export type { CheckKind };
@@ -295,7 +302,13 @@ export async function extractPhoto(
         } catch {
           continue;
         }
-        if (event.type === "done") finish({ items: event.items, readings: event.readings, lang: foreignOf(event.lang) });
+        if (event.type === "done") finish({
+            items: event.items,
+            readings: event.readings,
+            lang: foreignOf(event.lang),
+            cards: (event as { kind?: string }).kind === "cards",
+            subject: typeof event.subject === "string" ? event.subject : "",
+          });
         else if (event.type === "error") finish(new ApiError(event.error || fallback, 502));
         else onProgress(event);
       }
@@ -324,7 +337,7 @@ export async function extractPhoto(
     };
     xhr.onerror = () => finish(new Error("Keine Verbindung. Versuch es noch einmal."));
     xhr.ontimeout = () => finish(new ApiError(`${fallback} Versuch es noch einmal.`, 504));
-    xhr.timeout = 150_000;
+    xhr.timeout = 180_000;
     xhr.send(body);
   });
 }

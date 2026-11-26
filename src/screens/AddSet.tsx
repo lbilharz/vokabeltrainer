@@ -10,7 +10,8 @@ import { LIMITS } from "@shared/limits";
 interface Props {
   /** Die Sprache der aktuellen Lektion. Sie gilt, falls die App die Sprache der Seite nicht erkennt. */
   defaultLang: Foreign;
-  onSave: (label: string, items: RawItem[], lang: Foreign) => void;
+  /** subject: gesetzt bei Lernkarten aus einem Sachfach. Sonst sind es Vokabeln. */
+  onSave: (label: string, items: RawItem[], lang: Foreign, subject?: string) => void;
   onClose: () => void;
 }
 
@@ -18,6 +19,8 @@ interface Row extends Omit<ExtractedItem, "check"> {
   key: number;
   /** Warum die Zeile gelb ist. Steht über dem Wort. Ohne Grund ist die Zeile nicht markiert. */
   reason?: string;
+  /** Das wievielte Foto. Bei Lernkarten lässt sich eine ganze Seite entfernen. */
+  page: number;
 }
 
 const DIFFERENT_READINGS = "Die zwei Lesungen waren verschieden";
@@ -45,7 +48,7 @@ const STAGE_TEXT: Record<Live["stage"], string> = {
   comparing: "Ich lese zur Sicherheit ein zweites Mal und vergleiche …",
 };
 
-const MAX_AT_ONCE = 6;
+const MAX_AT_ONCE = 10;
 
 /** Ein Beispiel für den Namen der Lektion, so wie die Bücher ihre Abschnitte nennen. */
 const NAME_EXAMPLE: Record<Foreign, string> = { fr: "Unité 2, Volet 3", en: "Unit 2, Part A" };
@@ -59,6 +62,13 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
    */
   const [lang, setLang] = useState<Foreign>(defaultLang);
   const langPicked = useRef(false);
+  /**
+   * Das Fach, wenn die Fotos Lernstoff zeigen und keine Vokabeln. null: Vokabeln.
+   * Das erste Foto entscheidet. Eine Lektion mischt beides nicht.
+   */
+  const [subject, setSubject] = useState<string | null>(null);
+  const kindRef = useRef<"words" | "cards" | null>(null);
+  const pageCount = useRef(0);
   const [rows, setRows] = useState<Row[]>([]);
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +108,7 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const read = async (event: ChangeEvent<HTMLInputElement>) => {
-    // Mehr als sechs Seiten auf einmal dauern zu lange. Der Rest geht im nächsten Durchgang.
+    // Mehr als zehn Seiten auf einmal dauern zu lange. Der Rest geht im nächsten Durchgang.
     const files = [...(event.target.files ?? [])].slice(0, MAX_AT_ONCE);
     // Leeren, damit dieselben Bilder noch einmal gewählt werden können.
     event.target.value = "";
@@ -124,19 +134,39 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
             return prev;
           });
         });
-        if (result.items.length === 0) {
-          throw new Error("Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.");
+        const kind = result.cards ? "cards" : "words";
+        if (kindRef.current && kindRef.current !== kind) {
+          throw new Error(
+            kind === "cards"
+              ? "Diese Seite zeigt Lernstoff und keine Vokabeln. Lege dafür eine eigene Lektion an."
+              : "Diese Seite zeigt Vokabeln. Lege dafür eine eigene Lektion an.",
+          );
         }
-        if (result.readings === 1) setSingle(true);
+        if (result.items.length === 0) {
+          throw new Error(
+            result.cards
+              ? "Auf dieser Seite habe ich keinen Lernstoff gefunden."
+              : "Auf dem Foto habe ich keine Vokabeln gefunden. Versuch es mit einem anderen Bild.",
+          );
+        }
+        kindRef.current = kind;
+        const page = ++pageCount.current;
+        if (result.readings === 1 && !result.cards) setSingle(true);
         const rowsOfPage: Row[] = result.items.map(({ check, ...item }) => ({
           ...item,
           key: nextKey.current++,
           reason: check ? DIFFERENT_READINGS : undefined,
+          page,
         }));
         setRows((prev) => [...prev, ...rowsOfPage]);
-        // Die erkannte Sprache ist ein Vorschlag. Hat das Kind schon selbst gewählt, bleibt es dabei.
-        if (!langPicked.current) setLang(result.lang);
-        runCheck(rowsOfPage, result.lang);
+        if (result.cards) {
+          setSubject((prev) => prev ?? (result.subject || "Lernkarten"));
+          if (result.subject) setLabel((prev) => prev || result.subject);
+        } else {
+          // Die erkannte Sprache ist ein Vorschlag. Hat das Kind schon selbst gewählt, bleibt es dabei.
+          if (!langPicked.current) setLang(result.lang);
+          runCheck(rowsOfPage, result.lang);
+        }
         added += rowsOfPage.length;
         // Vorschlag für den Namen: die Überschrift von der Seite, wenn es eine gab.
         setLabel((prev) => prev || result.items.find((item) => item.c)?.c || "");
@@ -154,6 +184,8 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
       prev.map((row) => (row.key === key ? { ...row, [field]: value, reason: undefined } : row)),
     );
   const remove = (key: number) => setRows((prev) => prev.filter((row) => row.key !== key));
+  const removePage = (page: number) => setRows((prev) => prev.filter((row) => row.page !== page));
+  const cards = subject !== null;
 
   const valid = rows.filter((row) => row.fr.trim() && row.de.trim());
   const toCheck = rows.filter((row) => row.reason).length;
@@ -178,6 +210,7 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
         };
       }),
       lang,
+      subject ?? undefined,
     );
   };
 
@@ -261,10 +294,18 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
           <h1>Stimmt alles?</h1>
         </header>
 
-        <p className="lead small">
-          {rows.length === 1 ? "1 Vokabel gelesen." : `${rows.length} Vokabeln gelesen.`} Vergleiche sie mit deinem Buch.
-          Du kannst jedes Wort ändern.
-        </p>
+        {cards ? (
+          <p className="lead small">
+            {rows.length === 1 ? "1 Lernkarte" : `${rows.length} Lernkarten`} für {subject}. Das ist ein Vorschlag.
+            Vergleiche die Karten mit deinen Unterlagen. Streiche, was nicht zum Test gehört. Du kannst jeden Text
+            ändern.
+          </p>
+        ) : (
+          <p className="lead small">
+            {rows.length === 1 ? "1 Vokabel gelesen." : `${rows.length} Vokabeln gelesen.`} Vergleiche sie mit deinem
+            Buch. Du kannst jedes Wort ändern.
+          </p>
+        )}
 
         {error && (
           <p className="notice" role="alert">
@@ -288,7 +329,7 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
           </p>
         )}
 
-        {langPicker}
+        {!cards && langPicker}
 
         <div className="form-field">
           <label htmlFor="setname">Name der Lektion</label>
@@ -297,13 +338,52 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
             type="text"
             value={label}
             maxLength={LIMITS.MAX_LABEL_CHARS}
-            placeholder={NAME_EXAMPLE[lang]}
+            placeholder={cards ? "Biologie, Nervensystem" : NAME_EXAMPLE[lang]}
             onChange={(event) => setLabel(event.target.value)}
           />
         </div>
 
         <ul className="rows">
-          {rows.map((row, index) => (
+          {rows.map((row, index) =>
+            cards ? (
+              <li key={row.key} className="row card-row">
+                {/* Über der ersten Karte einer Seite steht das Thema. Die ganze Seite lässt sich entfernen. */}
+                {rows[index - 1]?.page !== row.page && (
+                  <div className="page-head">
+                    <strong>
+                      Seite {row.page}
+                      {row.c ? `: ${row.c}` : ""}
+                    </strong>
+                    <button className="text-btn" onClick={() => removePage(row.page)}>
+                      Seite entfernen
+                    </button>
+                  </div>
+                )}
+                <div className="row-fields">
+                  <textarea
+                    className="row-de"
+                    rows={2}
+                    value={row.de}
+                    maxLength={LIMITS.MAX_WORD_CHARS}
+                    aria-label={`Vorderseite, Karte ${index + 1}`}
+                    onChange={(event) => change(row.key, "de", event.target.value)}
+                  />
+                  <textarea
+                    className="row-fr"
+                    rows={2}
+                    value={row.fr}
+                    maxLength={LIMITS.MAX_WORD_CHARS}
+                    aria-label={`Rückseite, Karte ${index + 1}`}
+                    onChange={(event) => change(row.key, "fr", event.target.value)}
+                  />
+                  {row.n && <span className="row-note">Dazu gehört: {row.n}</span>}
+                  {row.beleg && <span className="row-source">Auf der Seite steht: {row.beleg}</span>}
+                </div>
+                <button className="icon-btn" aria-label={`Karte ${index + 1} entfernen`} onClick={() => remove(row.key)}>
+                  <Icon name="x" size={20} />
+                </button>
+              </li>
+            ) : (
             <li key={row.key} className={row.reason ? "row check" : "row"}>
               <div className="row-fields">
                 {row.reason && <span className="row-flag">{row.reason}</span>}
@@ -331,7 +411,8 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
                 <Icon name="x" size={20} />
               </button>
             </li>
-          ))}
+            ),
+          )}
         </ul>
 
         <div className="addset-actions">
@@ -350,7 +431,13 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
             </p>
           )}
           <button className={`btn primary ${kept.length === 0 ? "waiting" : ""}`} onClick={save}>
-            {kept.length === 1 ? "1 Vokabel übernehmen" : `${kept.length} Vokabeln übernehmen`}
+            {cards
+              ? kept.length === 1
+                ? "1 Karte übernehmen"
+                : `${kept.length} Karten übernehmen`
+              : kept.length === 1
+                ? "1 Vokabel übernehmen"
+                : `${kept.length} Vokabeln übernehmen`}
           </button>
         </div>
       </main>
@@ -379,7 +466,7 @@ export function AddSet({ defaultLang, onSave, onClose }: Props) {
             <span key={i} className={i % 2 === 0 ? "dark" : ""} />
           ))}
         </div>
-        <p>Fotografiere die Vokabelseite aus deinem Buch</p>
+        <p>Fotografiere eine Vokabelseite oder Lernstoff für einen Test</p>
       </div>
 
       <ul className="tips">

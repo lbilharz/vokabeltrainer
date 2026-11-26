@@ -62,6 +62,8 @@ function promptFor(kind: Step["kind"], lang: Foreign): string {
       return "Hör zu. Was heißt das auf Deutsch?";
     case "listenType":
       return "Hör zu. Schreibe, was du hörst.";
+    case "recall":
+      return "Überlege kurz. Dann decke die Antwort auf.";
   }
 }
 
@@ -75,6 +77,8 @@ export function Session(props: Props) {
   const [pos, setPos] = useState(0);
   const [typed, setTyped] = useState("");
   const [choice, setChoice] = useState<string | null>(null);
+  /** Lernkarte: true, sobald die Rückseite aufgedeckt ist. Dann sagt das Kind, ob es die Antwort wusste. */
+  const [revealed, setRevealed] = useState(false);
   /**
    * near: richtig bis auf Akzente oder einen Tippfehler. Zählt als richtig, mit Hinweis.
    * also: der Schiedsrichter lässt die Antwort gelten ("Auch richtig"). Sieht aus wie near.
@@ -225,21 +229,36 @@ export function Session(props: Props) {
     finish(rated.correct, rated.near ? "typo" : undefined, false);
   };
 
-  /** Trägt das Ergebnis ein und zeigt die Rückmeldung. copyAfter: vorher das Wort abschreiben lassen. */
+  /**
+   * Lernkarte: das Kind sagt selbst, ob es die Antwort wusste.
+   * Gibt es etwas zu feiern, erscheint die Rückmeldung. Sonst geht es gleich zur nächsten Karte.
+   */
+  const recalled = (knew: boolean) => {
+    if (result) return;
+    const done = finish(knew, undefined, false);
+    if (!done.cheer) advance(done.added);
+  };
+
+  /**
+   * Trägt das Ergebnis ein und zeigt die Rückmeldung. copyAfter: vorher das Wort abschreiben lassen.
+   * added: die Aufgabe, die dadurch hinten an die Runde kam. cheer: es gibt eine Serie oder ein "sitzt jetzt" zu zeigen.
+   */
   const finish = (
     correct: boolean,
     near: Near | undefined,
     copyAfter: boolean,
     judged?: { also?: boolean; note?: string },
-  ) => {
+  ): { added: Step | null; cheer: boolean } => {
     const card = getCard(props.progress, item.id, today);
     const isIntro = step.kind === "intro";
     // Eine neue Karte wird nur vorgestellt. Bewertet wird sie erst beim zweiten Mal.
     const next = isIntro ? introduce(card, today) : rate(card, correct, today);
-    props.onProgress(item.id, next, isIntro && !card.seen);
+    // Eine Lernkarte hat kein Kennenlernen. Ihr erstes Aufdecken zählt als neue Karte des Tages.
+    const firstTime = !card.seen && (isIntro || step.kind === "recall");
+    props.onProgress(item.id, next, firstTime);
 
     stats.current.items.add(item.id);
-    if (isIntro && !card.seen) stats.current.introduced++;
+    if (firstTime) stats.current.introduced++;
     if (!isIntro && !correct) stats.current.again.add(item.id);
     if (!isIntro) {
       // Warum das Wort wackelt: nicht gewusst, Artikel vergessen, Akzent oder Schreibweise.
@@ -247,9 +266,9 @@ export function Session(props: Props) {
       if (reason && !stats.current.weak.has(item.id)) stats.current.weak.set(item.id, reason);
       props.onWritten(item.id, step.kind, correct);
     }
-    if (isIntro || !correct) {
-      setQueue((q) => [...q, makeStep(item, next, pool, settings.listen, Math.random, props.freeWriting)]);
-    }
+    const added =
+      isIntro || !correct ? makeStep(item, next, pool, settings.listen, Math.random, props.freeWriting) : null;
+    if (added) setQueue((q) => [...q, added]);
 
     // Abschreiben: nach dem Kennenlernen immer, sonst nach einer falschen geschriebenen Antwort.
     const needsCopy = copyAfter && copySlots(copyText).some((slot) => !slot.given);
@@ -269,6 +288,7 @@ export function Session(props: Props) {
 
     setCopying(needsCopy);
     setResult({ correct, near, also: judged?.also, note: judged?.note, streak, mastered });
+    return { added, cheer: Boolean(streak) || mastered };
   };
 
   const copied = () => {
@@ -276,8 +296,9 @@ export function Session(props: Props) {
     setCopying(false);
   };
 
-  const advance = () => {
-    const nextStep = queue[pos + 1];
+  /** added: eine Aufgabe, die gerade erst an die Runde kam und in `queue` noch fehlt. */
+  const advance = (added: Step | null = null) => {
+    const nextStep = queue[pos + 1] ?? added ?? undefined;
     if (!nextStep) {
       const s = stats.current;
       props.onDone({
@@ -292,10 +313,12 @@ export function Session(props: Props) {
     }
     // Der Ton muss noch im Klick starten, nicht erst nach dem Neuzeichnen.
     const nextItem = itemsById.get(nextStep.itemId)!;
-    if (nextStep.kind !== "type") speak(nextItem.fr, nextItem.lang, settings.rate);
+    // Lernkarten werden nie vorgelesen. Beim freien Schreiben würde der Ton die Lösung verraten.
+    if (nextStep.kind !== "type" && nextStep.kind !== "recall") speak(nextItem.fr, nextItem.lang, settings.rate);
     setPos(pos + 1);
     setTyped("");
     setChoice(null);
+    setRevealed(false);
     setResult(null);
     setArticleHint(false);
     setFormHint(null);
@@ -307,7 +330,13 @@ export function Session(props: Props) {
   /** Farbe der Rückmeldung. Fast richtig und "Auch richtig" sehen gleich aus. */
   const tone = !result ? "" : result.near || result.also ? "near" : result.correct ? "good" : "bad";
   /** Die Überschrift ohne die zwei Sonderfälle "Auch richtig" und "Fast richtig". */
-  const plainTitle = result?.correct ? "Richtig" : step.kind === "intro" ? "Merk dir" : "Noch nicht";
+  const plainTitle = result?.correct
+    ? step.kind === "recall"
+      ? "Gewusst"
+      : "Richtig"
+    : step.kind === "intro"
+      ? "Merk dir"
+      : "Noch nicht";
 
   const done = pos + (result ? 1 : 0);
   // Jede neue Karte kommt nach dem Vorstellen noch einmal. Das zählt der Balken gleich mit.
@@ -350,6 +379,8 @@ export function Session(props: Props) {
 
         {(step.kind === "type" || step.kind === "gap") && <h1 className="word">{item.de}</h1>}
 
+        {step.kind === "recall" && <h1 className="word card-front">{item.de}</h1>}
+
         {step.kind === "intro" && (
           <div className="word-row">
             <button className="speak-btn" aria-label={`${item.fr} anhören`} onClick={say}>
@@ -369,7 +400,20 @@ export function Session(props: Props) {
       </div>
       )}
 
-      {copying ? null : step.kind === "gap" ? (
+      {copying ? null : step.kind === "recall" ? (
+        revealed && (
+          <div className="card-back" aria-live="polite">
+            <p className="card-answer">{item.fr}</p>
+            {item.n && (
+              <ul className="card-points">
+                {item.n.split(" · ").map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )
+      ) : step.kind === "gap" ? (
         <div className="answer">
           {result ? (
             // Nach der Aufgabe steht das ganze Wort da. Das Feld nimmt nichts mehr an.
@@ -441,7 +485,29 @@ export function Session(props: Props) {
         </form>
       )}
 
-      {!result && (
+      {!result && step.kind === "recall" && (
+        <footer className="actions pinned">
+          {revealed ? (
+            <>
+              <p className="card-ask">Hast du es gewusst?</p>
+              <div className="card-choice">
+                <button className="btn quiet" onClick={() => recalled(false)}>
+                  Noch nicht
+                </button>
+                <button className="btn primary" onClick={() => recalled(true)}>
+                  Gewusst
+                </button>
+              </div>
+            </>
+          ) : (
+            <button className="btn primary" autoFocus onClick={() => setRevealed(true)}>
+              Antwort zeigen
+            </button>
+          )}
+        </footer>
+      )}
+
+      {!result && step.kind !== "recall" && (
         <footer className={`actions ${hasChoices ? "pinned" : ""}`}>
           {step.kind !== "gap" && (
             <button
@@ -487,6 +553,7 @@ export function Session(props: Props) {
                 Deine Antwort: <span lang={lang}>{typed.trim()}</span>. {NEAR_NOTES[result.near]}
               </p>
             ))}
+          {step.kind !== "recall" && (
           <div className="solution">
             <div className="solution-text">
               <div className={`solution-fr ${result.mastered ? "cheer-set" : ""}`} lang={lang}>
@@ -501,8 +568,9 @@ export function Session(props: Props) {
               <Icon name="speaker" size={24} stroke={2.2} />
             </button>
           </div>
+          )}
           </div>
-          <button ref={nextRef} className="btn primary" onClick={advance}>
+          <button ref={nextRef} className="btn primary" onClick={() => advance()}>
             Weiter
           </button>
         </footer>

@@ -35,7 +35,7 @@ Everything is in one table, `RULES` in `shared/lang.ts`. French keeps exactly th
 The child does not pick a language before the photo. The Worker finds it out (`detectLang` in `worker/extract.ts`).
 
 1. The app sends the photo with `lang: "auto"` and a `hint`. The hint is the language of the current lesson.
-2. A small, fast model (`gemini-flash-lite-latest`) looks at the photo and answers `fr`, `en` or `unbekannt`.
+2. A small, fast model (`gemini-flash-lite-latest`) looks at the photo and answers `fr`, `en`, `sachtext` or `unbekannt`. `sachtext` leads to study cards (see `12-study-cards.md`).
 3. The large model then reads the page with the prompt of that language.
 4. The answer names the language. The review page shows it as "Sprache der Lektion". The child can change it there.
 

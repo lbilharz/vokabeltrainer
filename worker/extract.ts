@@ -85,8 +85,9 @@ Text auf dem Foto, der kein Vokabeleintrag ist, lässt du weg. Das gilt auch fü
 const PROMPTS: Record<Foreign, string> = { fr: PROMPT_FR, en: PROMPT_EN };
 
 /**
- * Vor dem Lesen schaut ein kleines, schnelles Modell nur auf eine Frage: welche Sprache?
- * Danach liest das große Modell mit den Regeln genau dieser Sprache.
+ * Vor dem Lesen schaut ein kleines, schnelles Modell nur auf eine Frage: was für eine Seite ist das?
+ * Eine Vokabelseite liest das große Modell danach mit den Regeln genau dieser Sprache.
+ * Aus Lernstoff eines anderen Fachs macht es Lernkarten.
  * So bleibt die erprobte französische Anweisung, wie sie ist, und das Kind muss nichts wählen.
  */
 const DETECT_MODEL = "gemini-flash-lite-latest";
@@ -94,19 +95,23 @@ const DETECT_URL = geminiUrl(DETECT_MODEL);
 /** Die Erkennung darf das Lesen nicht aufhalten. Nach dieser Frist gilt der Vorschlag der App. */
 const DETECT_TIMEOUT_MS = 6_000;
 
-const DETECT_PROMPT = `Das Foto zeigt eine Vokabelseite aus einem Schulbuch für deutsche Schüler.
-Die Seite stellt Wörter einer Fremdsprache neben ihre deutsche Übersetzung.
-Welche Fremdsprache lernen die Schüler mit dieser Seite?
+const DETECT_PROMPT = `Das Foto zeigt Lernmaterial eines deutschen Schülers. Entscheide, was für eine Seite es ist.
 
-Antworte mit "fr" für Französisch oder "en" für Englisch.
-Ist es keine von beiden oder kannst du es nicht erkennen, antworte mit "unbekannt".
-Deutsch ist nie die Antwort. Es ist die Sprache der Übersetzungen.`;
+- "fr": eine Vokabelliste für Französisch. Französische Wörter stehen neben ihrer deutschen Übersetzung.
+- "en": eine Vokabelliste für Englisch. Englische Wörter stehen neben ihrer deutschen Übersetzung.
+- "sachtext": Lernstoff aus einem anderen Fach, zum Beispiel Biologie, Geschichte oder Physik.
+  Das kann eine Mitschrift, eine Mindmap, eine beschriftete Skizze, ein Arbeitsblatt oder eine Buchseite sein.
+- "unbekannt": nichts davon, oder nicht zu erkennen.
 
-const DETECT_VALUES = [...FOREIGN, "unbekannt"] as const;
+Eine Seite mit Text in einer Fremdsprache, die keine Vokabelliste ist, ist "unbekannt".`;
+
+/** Was die Erkennung findet: eine Sprache oder Lernstoff aus einem anderen Fach. */
+type PageKind = Foreign | "sachtext";
+const DETECT_VALUES = [...FOREIGN, "sachtext", "unbekannt"] as const;
 const detectSchema = z.object({ sprache: z.enum(DETECT_VALUES) });
 
-/** Die Sprache der Seite. null heißt: nicht erkannt. Wirft nie. */
-async function detectLang(apiKey: string, mimeType: string, imageBase64: string): Promise<Foreign | null> {
+/** Die Art der Seite. null heißt: nicht erkannt. Wirft nie. */
+async function detectPage(apiKey: string, mimeType: string, imageBase64: string): Promise<PageKind | null> {
   try {
     // Regeln und fremdes Bild bleiben getrennt, siehe worker/prompt.ts.
     const body = geminiRequest({
@@ -128,6 +133,114 @@ async function detectLang(apiKey: string, mimeType: string, imageBase64: string)
     return sprache === "unbekannt" ? null : sprache;
   } catch (error) {
     console.error("Spracherkennung:", error instanceof Error ? error.message.slice(0, 80) : "Fehler");
+    return null;
+  }
+}
+
+/**
+ * Lernkarten aus Lernstoff. Erprobt am 26.11.2026 an zehn Fotos zu einem Biologie-Test:
+ * Handschrift und gedrehte Seiten wurden gelesen, erfunden wurde nichts.
+ * Die Auswahl ist ein Vorschlag. Das Kind prüft sie auf der Kontrollseite. Dafür gibt es zu jeder Karte den Beleg.
+ */
+const CARDS_PROMPT = `Das Foto zeigt Lernmaterial einer Schülerin (etwa 9. Klasse) für einen Test. Es kann eine handgeschriebene Mitschrift, eine Mindmap, ein Arbeitsblatt oder eine Buchseite sein. Das Foto kann gedreht sein und einen Bildschirm zeigen.
+
+Deine Aufgabe: Mache aus dem Inhalt Lernkarten für eine Karteikasten-App.
+
+Schritt 1: Lies die Seite. Sage ehrlich, wie gut sie lesbar ist ("gut", "teils", "schlecht"). Nenne das Fach und das Thema.
+Schritt 2: Wähle, was eine Schülerin für einen Test wissen muss: Fachbegriffe, Fakten, Abläufe, Zusammenhänge.
+Schritt 3: Schreibe Karten. Es gibt drei Arten:
+- "begriff": vorne eine kurze Erklärung, hinten der Fachbegriff (ein bis drei Wörter).
+- "frage": vorne eine Frage, hinten eine kurze Antwort (höchstens zwei Sätze). Dazu "punkte": zwei bis vier Stichpunkte, die eine gute Antwort enthalten muss.
+- "ablauf": vorne die Frage nach einer Reihenfolge, hinten die Schritte in der richtigen Reihenfolge, mit " → " getrennt.
+
+Regeln:
+- Nimm nur, was auf der Seite steht. Erfinde nichts dazu und ergänze kein Wissen von dir.
+- Zu jeder Karte gehört "beleg": die Stelle auf der Seite in wenigen Wörtern, so wie sie dort steht.
+- Ist eine Stelle nicht sicher lesbar, mache daraus keine Karte. Schreibe sie in "unsicher".
+- Arbeitsaufträge, Messwerte einzelner Schüler, Namen und Datumsangaben sind kein Lernstoff.
+- Lieber wenige gute Karten als viele. Eine Seite ohne Lernstoff bekommt keine Karten.
+- Schreibe einfach, in ganzen deutschen Sätzen, für eine Fünfzehnjährige.
+- "fach" ist ein einzelnes Wort wie "Biologie". "thema" hat höchstens sechs Wörter.`;
+
+const CARDS_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    lesbar: { type: "STRING", enum: ["gut", "teils", "schlecht"] },
+    fach: { type: "STRING" },
+    thema: { type: "STRING" },
+    karten: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          art: { type: "STRING", enum: ["begriff", "frage", "ablauf"] },
+          vorne: { type: "STRING" },
+          hinten: { type: "STRING" },
+          punkte: { type: "ARRAY", items: { type: "STRING" } },
+          beleg: { type: "STRING" },
+        },
+        required: ["art", "vorne", "hinten", "beleg"],
+      },
+    },
+    unsicher: { type: "ARRAY", items: { type: "STRING" } },
+  },
+  required: ["lesbar", "fach", "thema", "karten", "unsicher"],
+};
+
+const cardsSchema = z.object({
+  fach: z.string(),
+  thema: z.string(),
+  karten: z.array(
+    z.object({ vorne: z.string(), hinten: z.string(), punkte: z.array(z.string()).nullish(), beleg: z.string().nullish() }),
+  ),
+});
+
+const CARDS_URL = geminiUrl(GEMINI_MODEL);
+/** Das Auswählen braucht Nachdenken. Gemessen: 11 bis 32 Sekunden pro Seite. */
+const CARDS_TIMEOUT_MS = 70_000;
+const MAX_CARDS_PER_PAGE = 30;
+
+/** Eine Lernkarte, wie die Kontrollseite sie zeigt. `de` ist die Vorderseite, `fr` die Rückseite. */
+interface CardItem extends MergedItem {
+  /** Die Stelle auf der Seite, aus der die Karte stammt. Nur für die Kontrolle, nicht zum Speichern. */
+  beleg: string;
+}
+
+/** Liest Lernstoff und macht Karten daraus. null heißt: gescheitert. */
+async function readCards(
+  apiKey: string,
+  mimeType: string,
+  imageBase64: string,
+): Promise<{ items: CardItem[]; subject: string } | null> {
+  // Regeln und fremdes Bild bleiben getrennt, siehe worker/prompt.ts.
+  const body = geminiRequest({
+    rules: CARDS_PROMPT,
+    image: { mimeType, base64: imageBase64 },
+    generationConfig: { responseMimeType: "application/json", responseSchema: CARDS_SCHEMA },
+  });
+  const send = () => postGemini(CARDS_URL, apiKey, body, CARDS_TIMEOUT_MS);
+  try {
+    let response = await send();
+    if (RETRY_STATUS.includes(response.status)) {
+      await sleep(RETRY_DELAY_MS);
+      response = await send();
+    }
+    if (!response.ok) throw new Error(`Gemini HTTP ${response.status}`);
+    const page = cardsSchema.parse(JSON.parse(answerText(await response.json())));
+    const cut = (value: string, max: number) => oneLine(value).slice(0, max).trim();
+    const topic = cut(page.thema, MAX_HEADING_CHARS);
+    const items: CardItem[] = [];
+    for (const card of page.karten) {
+      const de = cut(card.vorne, MAX_WORD_CHARS);
+      const fr = cut(card.hinten, MAX_WORD_CHARS);
+      if (!de || !fr) continue;
+      const points = cut((card.punkte ?? []).map(oneLine).filter(Boolean).join(" · "), MAX_NOTE_CHARS);
+      items.push({ c: topic || null, fr, de, n: points || null, check: false, beleg: cut(card.beleg ?? "", 160) });
+      if (items.length >= MAX_CARDS_PER_PAGE) break;
+    }
+    return { items, subject: cut(page.fach, LIMITS.MAX_SUBJECT_CHARS) };
+  } catch (error) {
+    console.error("Lernkarten:", error instanceof Error ? error.message.slice(0, 80) : "Fehler");
     return null;
   }
 }
@@ -371,7 +484,17 @@ extract.post("/extract", async (context) => {
   const work = (async () => {
     try {
       emit({ type: "start" });
-      const lang = wanted === "auto" ? ((await detectLang(apiKey, mimeType, imageBase64)) ?? hint) : wanted;
+      const found = wanted === "auto" ? await detectPage(apiKey, mimeType, imageBase64) : wanted;
+      if (found === "sachtext") {
+        const cards = await readCards(apiKey, mimeType, imageBase64);
+        emit(
+          cards
+            ? { type: "done", kind: "cards", items: cards.items, subject: cards.subject, readings: 1, lang: hint }
+            : { type: "error", error: PAGE_ERROR },
+        );
+        return;
+      }
+      const lang = found ?? hint;
       const result = await readPage(apiKey, geminiBody(mimeType, imageBase64, lang), emit);
       emit(result ? { type: "done", ...result, lang } : { type: "error", error: PAGE_ERROR });
     } catch (error) {

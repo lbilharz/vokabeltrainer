@@ -11,6 +11,8 @@ export const LIMITS = {
   MAX_NOTE_CHARS: 300,
   /** Überschrift eines Abschnitts. */
   MAX_HEADING_CHARS: 60,
+  /** Fach einer Lektion mit Lernkarten. */
+  MAX_SUBJECT_CHARS: 40,
   /** Name eines Sets. */
   MAX_LABEL_CHARS: 60,
   /** Einträge in einem Set. */

@@ -41,6 +41,9 @@ const setDataSchema = z.object({
   createdAt: z.number().int().min(0),
   /** Die Sprache der Lektion. Fehlt sie, ist es Französisch. */
   lang: z.enum(FOREIGN).optional(),
+  /** Lernkarten aus einem Sachfach statt Vokabeln. */
+  kind: z.literal("cards").optional(),
+  subject: z.string().max(LIMITS.MAX_SUBJECT_CHARS).optional(),
 });
 
 const setSchema = z.object({

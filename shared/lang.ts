@@ -22,13 +22,18 @@ export const LANG_NAME: Record<Foreign, string> = { fr: "Französisch", en: "Eng
 export const LOCALE: Record<Lang, string> = { fr: "fr-FR", en: "en-GB", de: "de-DE" };
 
 /**
- * Die Sprache als Wort vor einer Zeile, zum Beispiel "Englisch · gestern fotografiert".
- * Sie steht nur da, wenn ein Kind mehr als eine Sprache lernt. Sonst wäre sie Lärm.
+ * Das Fach als Wort vor einer Zeile, zum Beispiel "Englisch · gestern fotografiert".
+ * Es steht nur da, wenn ein Kind mehr als ein Fach lernt. Sonst wäre sie Lärm.
  */
-export function withLang(line: string | null, lang: Foreign, all: readonly Foreign[]): string | null {
+export function withLang(line: string | null, subject: string, all: readonly string[]): string | null {
   if (new Set(all).size < 2) return line;
   // Hinter dem Punkt geht der Satz klein weiter: "Englisch · gestern fotografiert".
-  return line ? `${LANG_NAME[lang]} · ${line.charAt(0).toLowerCase()}${line.slice(1)}` : LANG_NAME[lang];
+  return line ? `${subject} · ${line.charAt(0).toLowerCase()}${line.slice(1)}` : subject;
+}
+
+/** Wie eine Lektion ihr Fach nennt: die Sprache, oder bei Lernkarten das Fach. */
+export function subjectName(lesson: { lang: Foreign; cards?: boolean; subject?: string }): string {
+  return lesson.cards ? lesson.subject || "Lernkarten" : LANG_NAME[lesson.lang];
 }
 
 export interface LangRules {

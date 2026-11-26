@@ -2210,3 +2210,101 @@ a.btn {
   gap: 4px;
   margin-top: auto;
 }
+
+/* ---------- Lernkarten ---------- */
+
+.word.card-front {
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.card-back {
+  margin-top: 16px;
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.card-answer {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.card-points {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.card-ask {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.card-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.row.card-row {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.page-head {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.row.card-row .row-fields {
+  flex-basis: 0;
+}
+
+.row-fields textarea {
+  width: 100%;
+  padding: 6px 8px;
+  margin-left: -8px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  /* Unter 16px zoomt iOS beim Tippen in die Seite. */
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  resize: vertical;
+  field-sizing: content;
+}
+
+.row-fields textarea.row-fr {
+  font-weight: 800;
+}
+
+.row-fields textarea:focus {
+  outline: none;
+  border-color: var(--rose);
+  background: var(--surface);
+}
+
+.row-source {
+  font-size: 12px;
+  font-weight: 600;
+  font-style: italic;
+  color: var(--muted);
+}

@@ -32,6 +32,7 @@ The app chooses the exercise from the learning state. The child does not choose 
 | `type` | See the German word and type the foreign word freely. |
 | `listenChoice` | Only listen. Pick the German meaning. |
 | `listenType` | Only listen. Type the foreign word. |
+| `recall` | A study card: see the front, reveal the back, say whether you knew it (see `12-study-cards.md`). |
 
 Rules of the ladder:
 

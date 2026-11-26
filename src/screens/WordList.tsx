@@ -44,9 +44,11 @@ export function WordList({ set, progress, rate, onBack }: Props) {
                     {item.n && <div className="list-note">{item.n}</div>}
                     <div className={`list-status ${card.seen ? (isMastered(card) ? "good" : "busy") : ""}`}>{status}</div>
                   </div>
-                  <button className="speak-btn small" aria-label={`${item.fr} anhören`} onClick={() => speak(item.fr, item.lang, rate)}>
-                    <Icon name="speaker" size={22} stroke={2.2} />
-                  </button>
+                  {!item.cards && (
+                    <button className="speak-btn small" aria-label={`${item.fr} anhören`} onClick={() => speak(item.fr, item.lang, rate)}>
+                      <Icon name="speaker" size={22} stroke={2.2} />
+                    </button>
+                  )}
                 </li>
               );
             })}

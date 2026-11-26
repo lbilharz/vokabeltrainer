@@ -11,8 +11,9 @@ import type { CardState, Item, Progress } from "./types";
  * type: deutsches Wort sehen, französisch tippen.
  * listenChoice: nur hören, deutsche Bedeutung wählen.
  * listenType: nur hören, französisch tippen.
+ * recall: eine Lernkarte. Vorderseite sehen, überlegen, aufdecken, selbst sagen, ob man es wusste.
  */
-export type ExerciseKind = "intro" | "gap" | "type" | "listenChoice" | "listenType";
+export type ExerciseKind = "intro" | "gap" | "type" | "listenChoice" | "listenType" | "recall";
 
 /** Bis zu diesem Fach gibt es das Lückenwort. Danach schreibt das Kind immer frei. */
 export const GAP_MAX_BOX = 2;
@@ -87,6 +88,8 @@ export function makeStep(
   random: Random,
   freeWriting = false,
 ): Step {
+  // Lernkarten kennen nur eine Aufgabe. Sie werden nie getippt.
+  if (item.cards) return { itemId: item.id, kind: "recall" };
   if (freeWriting && card.seen) return { itemId: item.id, kind: "type" };
   let kind = pickKind(card, listen, random);
   // Ohne Buchstaben gibt es nichts zu füllen.

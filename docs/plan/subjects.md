@@ -4,8 +4,6 @@
 
 A child should be able to learn for a test in any subject. The example: 13 pages of biology material and a test in two weeks. The app builds a learning plan from the material and trains the content.
 
-Stage 1 (a second language, English) is done. See `docs/history/2026-11-26-english.md` and `docs/architecture/11-languages.md`.
-
 ## Why this is more than another language
 
 Vocabulary is a list of pairs. The book already contains the list. Biology consists of terms, facts, processes and connections. Three things change.
@@ -18,42 +16,45 @@ Vocabulary is a list of pairs. The book already contains the list. Biology consi
 
 What carries over unchanged: photos, boxes with spaced repetition, sync, accounts, the small celebrations and the test focus. The test focus is already a learning plan. It spreads the open cards over the days until the test and ends with a dress rehearsal.
 
-## Stage 2: terms for any subject
+## Built so far
 
-From the material the app makes pairs of a term and a short explanation. About 40 pairs for 13 pages.
+- Stage 1: a second language (English). See `docs/history/2026-11-26-english.md`.
+- A first version of study cards with self-check, built on 26 November 2026 for a real biology test the week after. See `docs/architecture/12-study-cards.md` and `docs/history/2026-11-26-study-cards.md`.
 
-- The app shows the explanation. The child writes the term. The answer rules of today work for that.
-- The other direction is a choice task: the app shows the term, the child picks the right explanation.
-- A lesson gets a subject instead of only a language. A language is then one kind of subject.
-- The detection step before the reading (`detectLang` in `worker/extract.ts`) grows into "which subject is this?". It proposes the subject, and the child confirms it on the review page.
-- Each card names the page it came from. The child can delete cards and add own ones on the review page.
-- No recordings for these cards.
+## What is still open
 
-Open questions:
+- **Terms that the child types.** A card whose back is a single term could be typed and checked with the answer rules. That needs German as a language for the rules.
+- **Free answers judged by the referee.** Each card already stores the key points. The referee could compare an answer with them. Open: the cost per answer, the daily limit of 150 referee calls, and trust in the verdict.
+- **A plan by topic** with reading tasks like "Lies Seite 3 bis 5" before the cards of that topic.
+- **Labelled sketches** as a labelling task.
+- **Pages in parallel.** Ten photos take several minutes one after another.
+- **Words in the UI.** "Wortschatz", "Wörter" and "Neue Vokabeln" do not fit card lessons.
+- **Adding photos to an existing lesson.** Today a second batch becomes a second lesson.
+- **Honesty about the limit.** Cards secure terms and facts. They do not replace understanding.
 
-- How does the model choose the terms? One request per page gives duplicates across pages. A first pass over all pages for an outline and a second pass per topic may be better.
-- How long may an explanation be? The choice task needs four of them on a phone screen.
-- The daily limit for photo reading is 30 per account. 13 pages in one go fit, two such imports on one day do not.
+## The experiment (26 November 2026)
 
-## Stage 3: questions with free answers and a plan by topic
+Ten photos of real material for one biology test went through a draft prompt, one request per photo to `gemini-3.8-flash`. The material was mixed: handwritten notes, a mind map, a labelled sketch, printed worksheets. All of it was photographed from a tablet screen, partly rotated.
 
-- Card kinds: a question with a short free answer, a sentence with a gap, the steps of a process in the right order.
-- The referee becomes the main check for free answers. Each card stores the key points a good answer needs. The referee compares the answer with these points.
-- The plan knows topics. It first gives reading tasks like "Lies Seite 3 bis 5" and then the cards for that topic.
-- Diagrams with labels are a separate problem and not part of this stage.
+Result: 33 cards, 11 to 32 seconds per photo.
 
-Open questions:
+What worked:
 
-- Cost. Every free answer is a request to Gemini. Today the limit is 150 referee calls per account and day.
-- Trust. A wrong verdict on a free answer is worse than on a single word. A self-check ("gewusst" or "nicht gewusst") with the key points shown is the cheap alternative.
-- Honesty about the limit. Cards secure terms and facts. They do not replace understanding. The app must not promise more.
+- The model read handwriting and rotated pages. A spot check of three pages found no invented content.
+- Every card carried a short quote from the page as proof. That makes a review by the child possible.
+- The model made no cards from a worksheet that only held instructions and measured values.
+- It named unreadable spots instead of guessing.
 
-## Before stage 2: one experiment
+What did not work yet:
 
-Take real material, for example the 13 pages. Let the model produce cards with a draft prompt. Look at the cards together. This costs about 13 to 15 requests and no change to the app. The result decides whether the selection is good enough to build on.
+- **Other subjects slipped in.** Two pages were about dreams and belonged to psychology or ethics. The model made cards from them. The child has to be able to drop a whole page.
+- **Trivia.** Single numbers and side remarks became cards. Nothing tells the model what the teacher finds important.
+- **A labelled sketch became one question** that asks for all eight labels. A labelling task would fit better. That is not planned before stage 3.
+- **The notes of a student can be wrong or thin.** The model copies them faithfully. The app then trains the mistake.
+- **Few cards of the kind "term".** 8 of 33. Most material leads to questions with free answers. So stage 2 alone covers only a small part of real material.
 
-The test photos stay out of the repository, like the vocabulary test photos.
+Conclusions:
 
-## One question that decides the design
-
-What does the test look like? If it asks for terms and short answers, stage 2 covers most of it. If it asks "Erkläre den Ablauf", it needs stage 3.
+- The selection is good enough to build on. The review page is the important safety net.
+- "Terms first, questions later" does not fit real material. It needs questions with free answers from the start. So the first version uses self-check for every card.
+- The test photos and the cards are in the ignored folder `tools/testfotos/bio/`.

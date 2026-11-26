@@ -194,7 +194,10 @@ export function Trainer({ user, onSignedOut }: Props) {
 
   // Für jedes Wort soll es eine Aufnahme in seiner Sprache geben. Das läuft im Hintergrund.
   useEffect(() => {
-    const words = sets.flatMap((set) => set.items.map((item) => ({ text: item.fr, lang: item.lang })));
+    // Lernkarten werden nicht vorgelesen. Für sie entsteht keine Aufnahme.
+    const words = sets
+      .filter((set) => !set.cards)
+      .flatMap((set) => set.items.map((item) => ({ text: item.fr, lang: item.lang })));
     if (words.length > 0) void ensureAudio(words);
   }, [sets]);
 
@@ -273,7 +276,7 @@ export function Trainer({ user, onSignedOut }: Props) {
     // Der Ton für die erste Aufgabe muss noch im Klick starten.
     const first = steps[0]!;
     const firstItem = itemsById.get(first.itemId)!;
-    if (first.kind !== "type") speak(firstItem.fr, firstItem.lang, data.settings.rate);
+    if (first.kind !== "type" && first.kind !== "recall") speak(firstItem.fr, firstItem.lang, data.settings.rate);
     open({ name: "session", steps, run: Date.now(), options }, "/ueben");
   };
 
@@ -345,14 +348,19 @@ export function Trainer({ user, onSignedOut }: Props) {
   const changeSettings = (settings: SettingsData) => setMeta(() => ({ settings }));
 
   /** Legt eine neue Lektion an und zeigt gleich deren Lernpfad. */
-  const addSet = (label: string, items: RawItem[], lang: Foreign) => {
+  const addSet = (label: string, items: RawItem[], lang: Foreign, subject?: string) => {
+    // Mit Fach sind es Lernkarten aus einem Sachfach.
+    const extra =
+      subject === undefined
+        ? { unit: ["Wort", "Wörter"] as [string, string], lang }
+        : { unit: ["Karte", "Karten"] as [string, string], kind: "cards" as const, subject };
     const now = Date.now();
     const id = `s${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
     setData((prev) => ({
       ...prev,
       sets: {
         ...prev.sets,
-        [id]: { id, t: now, deleted: false, data: { label, unit: ["Wort", "Wörter"], items, createdAt: now, lang } },
+        [id]: { id, t: now, deleted: false, data: { label, items, createdAt: now, ...extra } },
       },
       setsDirty: [...prev.setsDirty, id],
       activeSet: id,

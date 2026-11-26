@@ -1,5 +1,5 @@
 import { photoLine } from "@shared/dates";
-import { withLang } from "@shared/lang";
+import { subjectName, withLang } from "@shared/lang";
 import { type Focus, testChip } from "@shared/focus";
 import { type Counts, countWords, listLine } from "@shared/lessons";
 import type { Progress } from "@shared/types";
@@ -46,7 +46,7 @@ function Completion({ counts }: { counts: Counts }) {
 export function Lessons({ sets, activeId, progress, today, focus, onPick, onAddSet, onBack }: Props) {
   const now = Date.now();
   const words = sets.reduce((n, set) => n + set.items.length, 0);
-  const langs = sets.map((set) => set.lang);
+  const subjects = sets.map(subjectName);
 
   return (
     <main className="screen lessons">
@@ -68,7 +68,7 @@ export function Lessons({ sets, activeId, progress, today, focus, onPick, onAddS
         {sets.map((set) => {
           const counts = countWords(set.items, progress, today);
           const current = set.id === activeId;
-          const date = withLang(photoLine(set.createdAt, now), set.lang, langs);
+          const date = withLang(photoLine(set.createdAt, now), subjectName(set), subjects);
           return (
             <li key={set.id}>
               <button
