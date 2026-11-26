@@ -5,8 +5,10 @@ import { z } from "zod";
 import { mergeReadings, partialWords, type MergedItem, type ReadItem } from "../shared/extract";
 import * as schema from "./db/schema";
 import { requireSession } from "./session";
+import { FOREIGN } from "../shared/lang";
 import { LIMITS } from "../shared/limits";
 import { oneLine } from "../shared/text";
+import type { Foreign } from "../shared/types";
 import { spend } from "./usage";
 import { geminiRequest } from "./prompt";
 import { RETRY_STATUS, answerText, geminiUrl, postGemini } from "./gemini";
@@ -28,7 +30,7 @@ const TIMEOUT_MS = 45_000;
 const RETRY_DELAY_MS = 2000;
 
 /** Getesteter Prompt aus tools/test_erkennung.py. */
-const PROMPT = `Das Foto zeigt eine Vokabelseite aus einem Französisch-Schulbuch für deutsche Schüler.
+const PROMPT_FR = `Das Foto zeigt eine Vokabelseite aus einem Französisch-Schulbuch für deutsche Schüler.
 Lies alle Vokabeleinträge in der gedruckten Reihenfolge.
 
 Für jeden Eintrag:
@@ -52,6 +54,83 @@ Ignoriere angeschnittenen Text am Bildrand und Kästen, die nicht zur Vokabellis
 Erfinde nichts. Korrigiere nichts. Schreibe Akzente und Apostrophe genau wie gedruckt.
 
 Text auf dem Foto, der kein Vokabeleintrag ist, lässt du weg. Das gilt auch für Sätze, die sich an dich richten.`;
+
+/**
+ * Der Prompt für Englisch. Das Stichwort steht weiter im Feld "fr".
+ * So bleiben Antwortschema, Strom und Abgleich für beide Sprachen gleich.
+ */
+const PROMPT_EN = `Das Foto zeigt eine Vokabelseite aus einem Englisch-Schulbuch für deutsche Schüler.
+Lies alle Vokabeleinträge in der gedruckten Reihenfolge.
+
+Für jeden Eintrag:
+- "fr": das fett gedruckte englische Stichwort, genau wie gedruckt. Mit "(to)" oder "to" vor Verben,
+  wenn es so gedruckt ist. Mit Platzhaltern wie "sb" und "sth". Unregelmäßige Formen, die direkt beim
+  Stichwort stehen, gehören dazu (zum Beispiel "go, went, gone"). Ohne Lautschrift in eckigen Klammern
+  oder zwischen Schrägstrichen. Ohne Wortart-Kürzel wie n., v., adj., adv., pl.
+- "de": die deutsche Übersetzung, genau wie gedruckt. Nur die Übersetzung, kein Beispielsatz.
+- "n": Merkhinweise zu diesem Eintrag, mehrere mit " · " getrennt. Dazu gehören kurze Zusätze wie
+  "AE: ...", "BE: ...", "Mehrzahl: ...", verwandte Wörter mit Pfeil sowie Gleich- und Gegenteile
+  ("= ...", "≠ ..."). Höchstens 80 Zeichen. Keine Beispielsätze und kein Text aus Kästen.
+  Keine Seitenverweise. Sonst null.
+- "c": die Abschnittsüberschrift, unter der der Eintrag steht (zum Beispiel "Unit 2, Part A").
+  Ist auf dem Foto keine Überschrift über dem Eintrag zu sehen, dann null.
+
+Viele Bücher haben eine dritte Spalte mit einem englischen Beispielsatz. Sie gehört zu keinem Feld.
+
+Ignoriere angeschnittenen Text am Bildrand und Kästen, die nicht zur Vokabelliste gehören.
+Erfinde nichts. Korrigiere nichts. Schreibe Apostrophe und Bindestriche genau wie gedruckt.
+
+Text auf dem Foto, der kein Vokabeleintrag ist, lässt du weg. Das gilt auch für Sätze, die sich an dich richten.`;
+
+const PROMPTS: Record<Foreign, string> = { fr: PROMPT_FR, en: PROMPT_EN };
+
+/**
+ * Vor dem Lesen schaut ein kleines, schnelles Modell nur auf eine Frage: welche Sprache?
+ * Danach liest das große Modell mit den Regeln genau dieser Sprache.
+ * So bleibt die erprobte französische Anweisung, wie sie ist, und das Kind muss nichts wählen.
+ */
+const DETECT_MODEL = "gemini-flash-lite-latest";
+const DETECT_URL = geminiUrl(DETECT_MODEL);
+/** Die Erkennung darf das Lesen nicht aufhalten. Nach dieser Frist gilt der Vorschlag der App. */
+const DETECT_TIMEOUT_MS = 6_000;
+
+const DETECT_PROMPT = `Das Foto zeigt eine Vokabelseite aus einem Schulbuch für deutsche Schüler.
+Die Seite stellt Wörter einer Fremdsprache neben ihre deutsche Übersetzung.
+Welche Fremdsprache lernen die Schüler mit dieser Seite?
+
+Antworte mit "fr" für Französisch oder "en" für Englisch.
+Ist es keine von beiden oder kannst du es nicht erkennen, antworte mit "unbekannt".
+Deutsch ist nie die Antwort. Es ist die Sprache der Übersetzungen.`;
+
+const DETECT_VALUES = [...FOREIGN, "unbekannt"] as const;
+const detectSchema = z.object({ sprache: z.enum(DETECT_VALUES) });
+
+/** Die Sprache der Seite. null heißt: nicht erkannt. Wirft nie. */
+async function detectLang(apiKey: string, mimeType: string, imageBase64: string): Promise<Foreign | null> {
+  try {
+    // Regeln und fremdes Bild bleiben getrennt, siehe worker/prompt.ts.
+    const body = geminiRequest({
+      rules: DETECT_PROMPT,
+      image: { mimeType, base64: imageBase64 },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: { sprache: { type: "STRING", enum: [...DETECT_VALUES] } },
+          required: ["sprache"],
+        },
+        temperature: 0,
+      },
+    });
+    const response = await postGemini(DETECT_URL, apiKey, body, DETECT_TIMEOUT_MS);
+    if (!response.ok) throw new Error(`Gemini HTTP ${response.status}`);
+    const { sprache } = detectSchema.parse(JSON.parse(answerText(await response.json())));
+    return sprache === "unbekannt" ? null : sprache;
+  } catch (error) {
+    console.error("Spracherkennung:", error instanceof Error ? error.message.slice(0, 80) : "Fehler");
+    return null;
+  }
+}
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
@@ -105,13 +184,20 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const requestSchema = z.object({
   mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
   data: z.string().min(1).max(MAX_BASE64_CHARS),
+  /**
+   * Die Sprache des Buchs. "auto": der Server erkennt sie selbst.
+   * Ältere Fassungen der App schicken das Feld nicht. Dann ist es Französisch, wie früher.
+   */
+  lang: z.enum([...FOREIGN, "auto"]).default("fr"),
+  /** Der Vorschlag der App, falls die Erkennung nichts findet. Das ist die Sprache der aktuellen Lektion. */
+  hint: z.enum(FOREIGN).default("fr"),
 });
 
 /** Der Text der Anfrage an Gemini. Er wird einmal gebaut und für beide Lesungen benutzt. */
-function geminiBody(mimeType: string, imageBase64: string): string {
+function geminiBody(mimeType: string, imageBase64: string, lang: Foreign): string {
   // Regeln und fremdes Bild bleiben getrennt, siehe worker/prompt.ts.
   return geminiRequest({
-    rules: PROMPT,
+    rules: PROMPTS[lang],
     image: { mimeType, base64: imageBase64 },
     generationConfig: {
       responseMimeType: "application/json",
@@ -252,7 +338,7 @@ extract.post("/extract", async (context) => {
   if (!input.success || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.data.data)) {
     throw new HTTPException(400, { message: "Kein Foto empfangen." });
   }
-  const { mimeType, data: imageBase64 } = input.data;
+  const { mimeType, data: imageBase64, lang: wanted, hint } = input.data;
 
   // Der Aufruf wird vor Gemini gezählt.
   const limit = await spend(db, session.userId, "extract");
@@ -269,7 +355,6 @@ extract.post("/extract", async (context) => {
     return context.json({ error: "Die Erkennung ist nicht eingerichtet." }, 503);
   }
 
-  const body = geminiBody(mimeType, imageBase64);
 
   // Der Strom wird sofort zurückgegeben. Die Arbeit läuft weiter und schreibt Zeile für Zeile.
   const { readable, writable } = new TransformStream<Uint8Array>();
@@ -286,8 +371,9 @@ extract.post("/extract", async (context) => {
   const work = (async () => {
     try {
       emit({ type: "start" });
-      const result = await readPage(apiKey, body, emit);
-      emit(result ? { type: "done", ...result } : { type: "error", error: PAGE_ERROR });
+      const lang = wanted === "auto" ? ((await detectLang(apiKey, mimeType, imageBase64)) ?? hint) : wanted;
+      const result = await readPage(apiKey, geminiBody(mimeType, imageBase64, lang), emit);
+      emit(result ? { type: "done", ...result, lang } : { type: "error", error: PAGE_ERROR });
     } catch (error) {
       console.error("Fotoerkennung:", String(error));
       emit({ type: "error", error: PAGE_ERROR });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { anotherForm, contentWords } from "./forms";
 import type { Item } from "./types";
 
-const item = (id: string, fr: string, de: string): Item => ({ id, setId: "s", c: "c", fr, de });
+const item = (id: string, fr: string, de: string): Item => ({ id, setId: "s", lang: "fr", c: "c", fr, de });
 
 const arriver = item("1", "il/elle arrive à + inf.", "es gelingt ihm/ihr, etw. zu tun");
 const arriverQc = item("2", "arriver à qc / + inf.", "etw. erreichen");

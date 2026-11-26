@@ -6,10 +6,10 @@ import { itemId } from "./text";
 import type { Item, Progress, RawItem } from "./types";
 
 const toItems = (setId: string, raw: RawItem[]): Item[] =>
-  raw.map((r) => ({ ...r, setId, id: itemId(setId, r.fr) }));
+  raw.map((r) => ({ ...r, setId, lang: "fr" as const, id: itemId(setId, r.fr) }));
 
 const mk = (c: string, n: number, setId = "t"): Item[] =>
-  Array.from({ length: n }, (_, i) => ({ c, fr: `${c}${i}`, de: "", setId, id: `${setId}:${c}${i}` }));
+  Array.from({ length: n }, (_, i) => ({ c, fr: `${c}${i}`, de: "", setId, lang: "fr" as const, id: `${setId}:${c}${i}` }));
 
 describe("buildStations mit u2.json", () => {
   const items = toItems("u2", u2 as RawItem[]);
@@ -96,6 +96,7 @@ describe("buildStations ohne Überschrift", () => {
     const items: Item[] = Array.from({ length: 10 }, (_, i) => ({
       id: `x:${i}`,
       setId: "x",
+      lang: "fr" as const,
       c: "",
       fr: `mot ${i}`,
       de: `Wort ${i}`,

@@ -1,10 +1,6 @@
-import type { Item } from "./types";
+import { RULES } from "./lang";
+import type { Foreign, Item } from "./types";
 import { acceptedAnswers, closeness, fold, isCorrect, norm, stripPlaceholders } from "./text";
-
-/** Wörter ohne eigene Bedeutung für den Vergleich: Artikel und Personalpronomen. */
-const FUNCTION_WORDS = new Set([
-  "le", "la", "les", "un", "une", "je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles",
-]);
 
 /** So viele Buchstaben müssen zwei Wörter am Anfang teilen, damit sie als Formen desselben Wortes gelten. */
 const MIN_PREFIX = 4;
@@ -13,14 +9,16 @@ const MIN_PREFIX = 4;
  * Die Inhaltswörter eines Textes: klein, ohne Akzente, ohne Artikel, Pronomen und Platzhalter.
  * "il/elle arrive à + inf." wird zu ["arrive", "a"].
  */
-export function contentWords(text: string): string[] {
+export function contentWords(text: string, lang: Foreign = "fr"): string[] {
+  const { functionWords, elision } = RULES[lang];
   const words: string[] = [];
-  const cleaned = stripPlaceholders(text).replace(/\b[lj][’']/gi, " "); // l'amour, j'arrive
+  const plain = stripPlaceholders(text);
+  const cleaned = elision ? plain.replace(/\b[lj][’']/gi, " ") : plain; // l'amour, j'arrive
   for (const token of fold(norm(cleaned)).split(" ")) {
     if (!token) continue;
     // Schrägstrich-Formen wie il/elle fallen weg, wenn alle Teile Funktionswörter sind.
     const parts = token.split("/").filter(Boolean);
-    if (parts.every((part) => FUNCTION_WORDS.has(part))) continue;
+    if (parts.every((part) => functionWords.has(part))) continue;
     words.push(token);
   }
   return words;
@@ -42,6 +40,11 @@ function sameWords(answer: string[], variant: string[]): boolean {
 export interface AnotherForm {
   /** Die andere Karte der Lektion, deren Lösung das Kind getippt hat. Sonst null. */
   other: Item | null;
+  /**
+   * true: Die Lösung nennt mehrere Formen mit Komma, und das Kind hat nur die erste geschrieben.
+   * Beispiel: "go" statt "go, went, gone".
+   */
+  partial?: boolean;
 }
 
 /**
@@ -53,18 +56,26 @@ export interface AnotherForm {
  * pool ist die Lektion. Hat das Kind die Lösung einer anderen Karte getippt, steht sie in `other`.
  */
 export function anotherForm(answer: string, targets: string[], item: Item, pool: readonly Item[]): AnotherForm | null {
-  if (!norm(answer) || isCorrect(answer, targets) || closeness(answer, targets) !== null) return null;
+  const lang = item.lang;
+  if (!norm(answer) || isCorrect(answer, targets, lang) || closeness(answer, targets, lang) !== null) return null;
 
-  const given = contentWords(answer);
+  // Nur die erste von mehreren Formen: das Wort stimmt, der Rest fehlt.
+  const partial = targets.some((target) => {
+    const forms = stripPlaceholders(target).split(/\s*,\s*/);
+    return forms.length > 1 && isCorrect(answer, [forms[0]!], lang);
+  });
+  if (partial) return { other: null, partial: true };
+
+  const given = contentWords(answer, lang);
   const related = targets.some((target) => {
     // Jede /-Variante einzeln, ohne Platzhalter.
     for (const variant of acceptedAnswers(stripPlaceholders(target))) {
-      if (sameWords(given, contentWords(variant))) return true;
+      if (sameWords(given, contentWords(variant, lang))) return true;
     }
     return false;
   });
   if (!related) return null;
 
-  const other = pool.find((card) => card.id !== item.id && isCorrect(answer, [card.fr])) ?? null;
+  const other = pool.find((card) => card.id !== item.id && isCorrect(answer, [card.fr], lang)) ?? null;
   return { other };
 }

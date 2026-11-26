@@ -1091,6 +1091,10 @@ button.station-row:active .station-dot {
   gap: 8px;
 }
 
+.segments.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .segments button {
   min-height: 48px;
   border: 2px solid var(--line);
@@ -1159,7 +1163,8 @@ button.station-row:active .station-dot {
   gap: 6px;
 }
 
-.form-field label {
+.form-field label,
+.form-field strong {
   font-size: 14px;
   font-weight: 700;
   color: var(--muted);

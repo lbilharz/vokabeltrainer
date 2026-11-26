@@ -7,8 +7,10 @@ import { spend } from "./usage";
 import { geminiRequest } from "./prompt";
 import { RETRY_STATUS, answerText, geminiUrl, postGemini } from "./gemini";
 import { CHECK_KINDS } from "../shared/extract";
+import { FOREIGN } from "../shared/lang";
 import { LIMITS } from "../shared/limits";
 import { oneLine } from "../shared/text";
+import type { Foreign } from "../shared/types";
 
 export const check = new Hono<{ Bindings: Env }>();
 
@@ -23,7 +25,7 @@ const RETRY_DELAY_MS = 1500;
  * Gemessen am 22.11.2026 mit kurzem Nachdenken: 16 von 16 verrutschten Zeilen erkannt,
  * kein falscher Alarm bei der richtigen Liste, 2 bis 3 Sekunden.
  */
-const PROMPT = `Du prüfst eine Vokabelliste. Sie wurde per Texterkennung aus einem Französisch-Schulbuch für deutsche Schüler gelesen.
+const PROMPT_FR = `Du prüfst eine Vokabelliste. Sie wurde per Texterkennung aus einem Französisch-Schulbuch für deutsche Schüler gelesen.
 Finde Zeilen, bei denen wahrscheinlich ein LESEFEHLER vorliegt. Es gibt drei Arten:
 1. "schreibweise": Das französische Stichwort ist kein richtig geschriebenes Französisch (fehlender Akzent, falscher Buchstabe).
 2. "passt_nicht": Die deutsche Übersetzung passt nicht zum französischen Stichwort.
@@ -38,6 +40,27 @@ Das ist KEIN Fehler und wird nicht markiert:
 Markiere lieber zu wenig als zu viel. Antworte nur mit den Zeilennummern der fehlerhaften Zeilen.
 
 Du bekommst die Liste als JSON: "zeilen" mit "nr", "fr" und "de" je Zeile. "nr" ist die Zeilennummer für deine Antwort.`;
+
+/** Dieselbe Aufgabe für Englisch. Das Stichwort steht weiter im Feld "fr". */
+const PROMPT_EN = `Du prüfst eine Vokabelliste. Sie wurde per Texterkennung aus einem Englisch-Schulbuch für deutsche Schüler gelesen.
+Finde Zeilen, bei denen wahrscheinlich ein LESEFEHLER vorliegt. Es gibt drei Arten:
+1. "schreibweise": Das englische Stichwort ist kein richtig geschriebenes Englisch (falscher oder fehlender Buchstabe).
+2. "passt_nicht": Die deutsche Übersetzung passt nicht zum englischen Stichwort.
+3. "verschmolzen": Zwei Einträge sind zu einem verschmolzen.
+
+Das ist KEIN Fehler und wird nicht markiert:
+- Platzhalter wie sb, sth, jdn, jdm, etw. und ein "(to)" oder "to" vor Verben.
+- Mehrere Formen eines unregelmäßigen Verbs hintereinander (zum Beispiel "go, went, gone").
+- Britische und amerikanische Schreibweisen. Beide sind richtig.
+- Bei Eigennamen eine Erklärung statt einer Übersetzung.
+- Kurzformen wie "Haupt-" und mehrere Formen mit Schrägstrich.
+- Eine Übersetzung, die nur eine von mehreren möglichen Bedeutungen nennt.
+
+Markiere lieber zu wenig als zu viel. Antworte nur mit den Zeilennummern der fehlerhaften Zeilen.
+
+Du bekommst die Liste als JSON: "zeilen" mit "nr", "fr" und "de" je Zeile. "fr" ist das englische Stichwort. "nr" ist die Zeilennummer für deine Antwort.`;
+
+const PROMPTS: Record<Foreign, string> = { fr: PROMPT_FR, en: PROMPT_EN };
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
@@ -64,6 +87,8 @@ const requestSchema = z.object({
     )
     .min(1)
     .max(150),
+  /** Die Sprache der Liste. Ältere Fassungen der App schicken sie nicht. Dann ist es Französisch. */
+  lang: z.enum(FOREIGN).default("fr"),
 });
 
 const flagsSchema = z.object({
@@ -82,7 +107,7 @@ check.post("/check", async (context) => {
   const session = await requireSession(context, db);
 
   // Kaputtes JSON und falsche Felder werden in worker/index.ts zu 400.
-  const { items } = requestSchema.parse(await context.req.json());
+  const { items, lang } = requestSchema.parse(await context.req.json());
 
   const apiKey = context.env.GEMINI_API_KEY;
   if (!apiKey) return context.json({ error: "Die Erkennung ist nicht eingerichtet." }, 503);
@@ -94,7 +119,7 @@ check.post("/check", async (context) => {
 
   // Regeln und fremder Text bleiben getrennt, siehe worker/prompt.ts.
   const body = geminiRequest({
-    rules: PROMPT,
+    rules: PROMPTS[lang],
     data: { zeilen: items.map((item, index) => ({ nr: index, fr: oneLine(item.fr), de: oneLine(item.de) })) },
     generationConfig: {
       responseMimeType: "application/json",

@@ -1,4 +1,5 @@
-import type { Lang } from "./types";
+import { RULES } from "./lang";
+import type { Foreign, Lang } from "./types";
 
 // FNV-1a, 32 Bit, über UTF-8-Bytes. Muss zu fnv1a() in tools/render_tts.py passen.
 export function fnv1a(str: string): string {
@@ -23,6 +24,10 @@ export function sayText(s: string, lang: Lang): string {
       .replace(/\(à qn\)/g, "")
       .replace(/\+\s*inf\./g, "")
       .replace(/\bqn\/qc\b|\bqc\b|\bqn\b/g, "");
+  } else if (lang === "en") {
+    s = s
+      .replace(/\b(sb|smb)(['’]s)?\b\.?/g, "somebody$2")
+      .replace(/\b(sth|smth)\b\.?/g, "something");
   } else {
     s = s
       .replace(/\bjdn\/etw\./g, "jemanden oder etwas")
@@ -56,13 +61,14 @@ export function norm(s: string): string {
     .trim();
 }
 
-// Platzhalter weglassen: qn/qc, + inf., jdn/etw., (à qn), (sich)
+// Platzhalter weglassen: qn/qc, + inf., jdn/etw., (à qn), (sich), sb/sth
 export function stripPlaceholders(s: string): string {
   return s
     .replace(/\([^)]*\)/g, " ")
     .replace(/\+\s*inf\.?/g, " ")
     .replace(/\bqn\/qc\b|\bqn\b|\bqc\b/g, " ")
     .replace(/\b(jdn|jdm|jds|etw)\.?(\/(jdn|jdm|jds|etw)\.?)*/g, " ")
+    .replace(/\b(sb|sth|smb|smth)(['’]s)?\.?(\/(sb|sth|smb|smth)\.?)*(?!\w)/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -93,11 +99,27 @@ export function acceptedAnswers(target: string): Set<string> {
   return out;
 }
 
+/**
+ * Lässt weg, was in dieser Sprache für den Vergleich keine Rolle spielt.
+ * Englisch: "to go" wird zu "go", "ask somebody" wird zu "ask". Französisch bleibt, wie es ist.
+ */
+function relaxed(s: string, lang: Foreign): string {
+  const { optionalLead, spelledOut } = RULES[lang];
+  let out = s;
+  if (spelledOut) out = out.replace(spelledOut, " ").replace(/\s+/g, " ").trim();
+  if (optionalLead) out = out.replace(optionalLead, "");
+  return out;
+}
+
 // Richtig, wenn die Antwort zu mindestens einem Ziel passt.
-export function isCorrect(answer: string, targets: string[]): boolean {
+export function isCorrect(answer: string, targets: string[], lang: Foreign = "fr"): boolean {
   const a = norm(answer);
   if (!a) return false;
-  return targets.some((t) => acceptedAnswers(t).has(a));
+  if (targets.some((t) => acceptedAnswers(t).has(a))) return true;
+  // Nur Sprachen mit lockeren Regeln vergleichen ein zweites Mal. Französisch bleibt genau wie bisher.
+  if (!RULES[lang].optionalLead && !RULES[lang].spelledOut) return false;
+  const short = relaxed(a, lang);
+  return short !== "" && targets.some((t) => [...acceptedAnswers(t)].some((right) => relaxed(right, lang) === short));
 }
 
 /** Warum eine falsche Antwort fast richtig ist. null heisst: nicht nah genug. */
@@ -140,11 +162,9 @@ export function editDistance(a: string, b: string, max: number): number {
   return prev[b.length]!;
 }
 
-const ARTICLE = /^(le|la|les|un|une) /;
-
 /** Der Artikel am Anfang, sonst "". */
-function articleOf(s: string): string {
-  return ARTICLE.exec(s)?.[1] ?? "";
+function articleOf(s: string, article: RegExp | null): string {
+  return article?.exec(s)?.[1] ?? "";
 }
 
 /**
@@ -155,21 +175,23 @@ function articleOf(s: string): string {
  * typo: ein Buchstabe ist falsch, bei langen Wörtern höchstens zwei.
  *   Ein falscher Artikel ("la" statt "le") zählt nicht als Tippfehler.
  * Kurze Wörter bekommen keine Nachsicht. "la" und "le" sind zu nah beieinander.
+ * Den Hinweis auf den Artikel gibt es nur in Sprachen, in denen er zum Wort gehört (siehe lang.ts).
  */
-export function closeness(answer: string, targets: string[]): Closeness {
-  const given = fold(norm(answer));
+export function closeness(answer: string, targets: string[], lang: Foreign = "fr"): Closeness {
+  const { article, elision } = RULES[lang];
+  const given = fold(relaxed(norm(answer), lang));
   if (!given) return null;
   const accepted = new Set<string>();
-  for (const target of targets) for (const a of acceptedAnswers(target)) accepted.add(fold(a));
+  for (const target of targets) for (const a of acceptedAnswers(target)) accepted.add(fold(relaxed(a, lang)));
   if (accepted.has(given)) return "accents";
 
   let typo = false;
   for (const right of accepted) {
-    if (right.replace(ARTICLE, "") === given && right !== given) return "article";
+    if (article && right.replace(article, "") === given && right !== given) return "article";
     // norm() entfernt den Apostroph. Aus "l'amour" wird "lamour".
-    if (right === "l" + given) return "article";
+    if (elision && right === "l" + given) return "article";
     // "la roman" statt "le roman" ist kein Tippfehler, sondern das falsche Geschlecht.
-    if (articleOf(right) !== articleOf(given)) continue;
+    if (articleOf(right, article) !== articleOf(given, article)) continue;
     const max = right.length >= 9 ? 2 : right.length >= 4 ? 1 : 0;
     if (max > 0 && editDistance(given, right, max) <= max) typo = true;
   }

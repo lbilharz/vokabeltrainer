@@ -31,7 +31,7 @@ import type { Item } from "./types";
 // Tagesnummer für Mittwoch, 25. November 2026.
 const wed = Date.UTC(2026, 10, 25) / 86_400_000;
 const mk = (n: number): Item[] =>
-  Array.from({ length: n }, (_, i) => ({ id: `a:${i}`, setId: "a", c: "", fr: `f${i}`, de: `d${i}` }));
+  Array.from({ length: n }, (_, i) => ({ id: `a:${i}`, setId: "a", lang: "fr" as const, c: "", fr: `f${i}`, de: `d${i}` }));
 const focus = (day: number, sure: string[] = []): Focus => ({ setId: "a", day, sure });
 
 describe("Tage", () => {

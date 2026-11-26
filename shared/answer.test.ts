@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { type RulingState, ruleTyped } from "./answer";
 import type { Item } from "./types";
 
-const item = (id: string, fr: string, de: string): Item => ({ id, setId: "s", c: "c", fr, de });
+const item = (id: string, fr: string, de: string): Item => ({ id, setId: "s", lang: "fr", c: "c", fr, de });
 
 const maison = item("1", "la maison", "das Haus");
 const ecole = item("2", "l'école", "die Schule");

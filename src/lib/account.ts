@@ -2,7 +2,8 @@
 
 import type { CheckKind, MergedItem } from "@shared/extract";
 import type { SyncCard } from "@shared/sync";
-import type { SetDoc } from "@shared/types";
+import { foreignOf } from "@shared/lang";
+import type { Foreign, SetDoc } from "@shared/types";
 import { ApiError, apiDelete, apiGet, apiPost } from "./api";
 import { APP_VERSION, VERSION_HEADER, noteServerVersion } from "./version";
 import {
@@ -165,6 +166,8 @@ export interface ExtractResponse {
   items: ExtractedItem[];
   /** 2 ist der Normalfall. Bei 1 fehlt die Gegenprobe. */
   readings: 1 | 2;
+  /** Die Sprache, die der Server auf der Seite erkannt hat. */
+  lang: Foreign;
 }
 
 export type { CheckKind };
@@ -173,8 +176,11 @@ export type { CheckKind };
  * Gegenprobe: ein zweites Modell prüft, ob die Wortpaare zusammenpassen.
  * `i` ist die Position in der geschickten Liste.
  */
-export async function checkItems(items: { fr: string; de: string }[]): Promise<{ i: number; kind: CheckKind }[]> {
-  const { flags } = await apiPost<{ flags: { i: number; kind: CheckKind }[] }>("/api/check", { items });
+export async function checkItems(
+  items: { fr: string; de: string }[],
+  lang: Foreign,
+): Promise<{ i: number; kind: CheckKind }[]> {
+  const { flags } = await apiPost<{ flags: { i: number; kind: CheckKind }[] }>("/api/check", { items, lang });
   return flags;
 }
 
@@ -192,11 +198,11 @@ const JUDGE_TIMEOUT_MS = 4000;
  * Fragt den Schiedsrichter, ob eine falsch bewertete Antwort doch gelten kann.
  * Wirft nie. Bei jedem Fehler und nach 4 Sekunden kommt unknown.
  */
-export async function judgeAnswer(de: string, fr: string, answer: string): Promise<Judgement> {
+export async function judgeAnswer(de: string, fr: string, answer: string, lang: Foreign): Promise<Judgement> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), JUDGE_TIMEOUT_MS);
   try {
-    const result = await apiPost<Partial<Judgement>>("/api/judge", { de, fr, answer }, { signal: controller.signal });
+    const result = await apiPost<Partial<Judgement>>("/api/judge", { de, fr, answer, lang }, { signal: controller.signal });
     const verdict = result?.verdict;
     if (verdict !== "correct" && verdict !== "form" && verdict !== "wrong") return { verdict: "unknown" };
     const note = typeof result.note === "string" ? result.note.trim() : "";
@@ -233,6 +239,8 @@ type ExtractLine =
  */
 export async function extractPhoto(
   photo: Blob,
+  /** Der Vorschlag, falls der Server die Sprache nicht erkennt. */
+  hint: Foreign,
   onProgress: (event: ExtractProgress) => void = () => {},
 ): Promise<ExtractResponse> {
   // Das Bild geht als Base64 zum Server. Der Browser wandelt es um, das spart dem Server Rechenzeit.
@@ -242,7 +250,12 @@ export async function extractPhoto(
     reader.onerror = () => reject(new Error("Das Bild konnte nicht gelesen werden."));
     reader.readAsDataURL(photo);
   });
-  const body = JSON.stringify({ mimeType: photo.type || "image/jpeg", data: dataUrl.slice(dataUrl.indexOf(",") + 1) });
+  const body = JSON.stringify({
+    mimeType: photo.type || "image/jpeg",
+    data: dataUrl.slice(dataUrl.indexOf(",") + 1),
+    lang: "auto",
+    hint,
+  });
   const fallback = "Die Seite konnte nicht gelesen werden.";
 
   return new Promise<ExtractResponse>((resolve, reject) => {
@@ -282,7 +295,7 @@ export async function extractPhoto(
         } catch {
           continue;
         }
-        if (event.type === "done") finish({ items: event.items, readings: event.readings });
+        if (event.type === "done") finish({ items: event.items, readings: event.readings, lang: foreignOf(event.lang) });
         else if (event.type === "error") finish(new ApiError(event.error || fallback, 502));
         else onProgress(event);
       }

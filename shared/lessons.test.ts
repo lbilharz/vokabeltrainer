@@ -5,7 +5,7 @@ import { MASTER } from "./srs";
 import type { Item, Progress } from "./types";
 
 const items = (setId: string, n: number): Item[] =>
-  Array.from({ length: n }, (_, i) => ({ c: "", fr: `f${i}`, de: `d${i}`, setId, id: `${setId}:${i}` }));
+  Array.from({ length: n }, (_, i) => ({ c: "", fr: `f${i}`, de: `d${i}`, setId, lang: "fr" as const, id: `${setId}:${i}` }));
 const lesson = (id: string, n: number, createdAt = 0): LessonLike => ({
   id,
   label: `Lektion ${id}`,

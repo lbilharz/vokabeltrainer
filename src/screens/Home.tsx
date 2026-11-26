@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { photoLine } from "@shared/dates";
+import { withLang } from "@shared/lang";
 import {
   type Focus,
   leftWord,
@@ -112,7 +113,11 @@ export function Home(props: Props) {
     mastered: 0,
   });
   const hint = openHint(openLessons(sets, active.id, progress, today), now);
-  const dateLine = photoLine(active.createdAt, now);
+  const dateLine = withLang(
+    photoLine(active.createdAt, now),
+    active.lang,
+    sets.map((set) => set.lang),
+  );
 
   const todayCount = plan.dueIds.length + plan.newIds.length;
   const parts: string[] = [];

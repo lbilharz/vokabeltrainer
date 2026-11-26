@@ -11,7 +11,7 @@ Each child creates an account with a passkey. The child photographs a vocabulary
 | Shared logic | `shared/` | Pure functions for learning, answer checking, sync and planning. Client and Worker both use them. |
 | Worker | `worker/` | Hono on Cloudflare Workers. All paths under `/api`. |
 | Database | D1, binding `DB`, schema in `worker/db/schema.ts`, migrations in `migrations/` | Accounts, passkeys, sessions, cards, lessons, settings, counters. |
-| Recordings | R2, binding `AUDIO` | French voice recordings for photographed words. |
+| Recordings | R2, binding `AUDIO` | Voice recordings for photographed words, one folder per language. |
 | Service worker | `public/sw.js` | Offline start, recording cache, push signal. |
 | Tools | `tools/` | Scripts for recordings, keys and photo reading tests. |
 
@@ -57,5 +57,5 @@ The Worker has no tests of its own. `npm run typecheck` checks types.
 ## Special cases
 
 - The templates in `src/data/*.json` belong to no account. Only the test link `/prefill` adds them to a signed-in account. New accounts start empty.
-- The card id is `${setId}:${fnv1a(fr)}` (`itemId()` in `shared/text.ts`). It depends on the lesson and on the French text.
+- The card id is `${setId}:${fnv1a(fr)}` (`itemId()` in `shared/text.ts`). It depends on the lesson and on the foreign word. The field is named `fr` for every language (see `11-languages.md`).
 - The code still says `set` where the UI says "Lektion" (lesson).

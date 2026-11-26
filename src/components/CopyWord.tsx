@@ -1,9 +1,12 @@
 import { useMemo, useRef, useState } from "react";
+import type { Foreign } from "@shared/types";
 import { accentBase, advanceCopy, copySlots, gapSlots, skipGiven } from "@shared/copy";
 
 interface Props {
   /** Der Text zum Schreiben. */
   target: string;
+  /** Die Sprache des Textes. Daran richten sich Tastatur und Vorlesen aus. */
+  lang: Foreign;
   /**
    * copy: das ganze Wort steht da und wird abgeschrieben.
    * gap: nur die Anfangsbuchstaben stehen da, das Kind füllt die Lücken.
@@ -21,7 +24,7 @@ interface Props {
  * Ein falscher Buchstabe wird nicht angenommen. Die Stelle wackelt, und ein Hinweis erscheint.
  * Das Eingabefeld liegt unsichtbar über dem Wort. Es ist nur für die Tastatur da.
  */
-export function CopyWord({ target, mode = "copy", onDone }: Props) {
+export function CopyWord({ target, lang, mode = "copy", onDone }: Props) {
   const gap = mode === "gap";
   const slots = useMemo(() => (gap ? gapSlots(target) : copySlots(target)), [target, gap]);
   const missed = useRef(new Set<number>());
@@ -68,7 +71,7 @@ export function CopyWord({ target, mode = "copy", onDone }: Props) {
   return (
     <div className="copy">
       <div className="copy-field">
-        <div className="copy-word" lang="fr" aria-hidden="true">
+        <div className="copy-word" lang={lang} aria-hidden="true">
           {slots.map((slot, index) => (
             <span
               // Der Schlüssel wechselt mit jedem Fehlversuch. So startet das Wackeln neu.
@@ -88,7 +91,7 @@ export function CopyWord({ target, mode = "copy", onDone }: Props) {
           ref={inputRef}
           className="copy-input"
           type="text"
-          lang="fr"
+          lang={lang}
           value={raw}
           aria-label={gap ? "Fülle die Lücken" : `Schreib ab: ${target}`}
           aria-describedby={hint ? "copy-hint" : undefined}

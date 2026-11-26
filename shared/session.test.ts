@@ -35,7 +35,7 @@ const fixed = (values: number[]): Random => {
 };
 
 const toItems = (setId: string, raw: RawItem[]): Item[] =>
-  raw.map((r) => ({ ...r, setId, id: itemId(setId, r.fr) }));
+  raw.map((r) => ({ ...r, setId, lang: "fr" as const, id: itemId(setId, r.fr) }));
 
 const mk = (setId: string, n: number, c = "A"): Item[] =>
   Array.from({ length: n }, (_, i) => ({
@@ -43,6 +43,7 @@ const mk = (setId: string, n: number, c = "A"): Item[] =>
     fr: `fr${i}`,
     de: `de${setId}${i}`,
     setId,
+    lang: "fr" as const,
     id: `${setId}:${i}`,
   }));
 
@@ -129,7 +130,7 @@ describe("buildOptions mit u2.json", () => {
     }
   });
   it("füllt aus dem ganzen Pool auf, wenn der Abschnitt zu klein ist", () => {
-    const own: Item = { c: "Allein", fr: "x", de: "einzig", setId: "t", id: "t:x" };
+    const own: Item = { c: "Allein", fr: "x", de: "einzig", setId: "t", lang: "fr", id: "t:x" };
     const opts = buildOptions(own, [own, ...items], seeded(5));
     expect(opts).toHaveLength(4);
     expect(opts).toContain("einzig");
@@ -141,8 +142,8 @@ describe("buildOptions mit u2.json", () => {
     expect([...opts].sort()).toEqual(pair.map((i) => i.de).sort());
   });
   it("lässt eine zweite Karte mit gleichem deutschen Text nicht als falsche Antwort zu", () => {
-    const a: Item = { c: "A", fr: "a", de: "Gleich", setId: "t", id: "t:a" };
-    const b: Item = { c: "A", fr: "b", de: "gleich!", setId: "t", id: "t:b" };
+    const a: Item = { c: "A", fr: "a", de: "Gleich", setId: "t", lang: "fr", id: "t:a" };
+    const b: Item = { c: "A", fr: "b", de: "gleich!", setId: "t", lang: "fr", id: "t:b" };
     const opts = buildOptions(a, [a, b], seeded(1));
     expect(opts).toEqual(["Gleich"]);
   });
@@ -199,8 +200,8 @@ describe("targetsFor", () => {
     expect(targetsFor(b, pool)).toEqual([b.fr, a.fr]);
   });
   it("vergleicht ohne Groß- und Kleinschreibung und ohne Satzzeichen", () => {
-    const a: Item = { c: "A", fr: "a", de: "Wo wohnst du?", setId: "t", id: "t:a" };
-    const b: Item = { c: "A", fr: "b", de: "wo wohnst du", setId: "t", id: "t:b" };
+    const a: Item = { c: "A", fr: "a", de: "Wo wohnst du?", setId: "t", lang: "fr", id: "t:a" };
+    const b: Item = { c: "A", fr: "b", de: "wo wohnst du", setId: "t", lang: "fr", id: "t:b" };
     expect(targetsFor(a, [a, b])).toEqual(["a", "b"]);
   });
 });

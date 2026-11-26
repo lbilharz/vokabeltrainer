@@ -46,7 +46,7 @@ export function Result({ stats, itemsById, lessonLabel, testDay, today, onRetry,
             {weak.map(({ item, reason }) => (
               <li key={item.id}>
                 <div>
-                  <div className="weak-fr" lang="fr">
+                  <div className="weak-fr" lang={item.lang}>
                     {item.fr}
                   </div>
                   <div className="weak-de">{item.de}</div>

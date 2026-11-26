@@ -1,11 +1,19 @@
 /** Gemeinsame Typen für Logik (shared/) und Oberfläche (src/). */
 
-export type Lang = "fr" | "de";
+/** Eine Sprache, die das Kind lernt. */
+export type Foreign = "fr" | "en";
+
+/** Jede Sprache, die die App spricht und schreibt. */
+export type Lang = Foreign | "de";
 
 /** Ein Eintrag, wie er in src/data/*.json steht. */
 export interface RawItem {
   /** Abschnitt im Buch oder Thema, zum Beispiel "Volet 2". */
   c: string;
+  /**
+   * Das Wort in der Fremdsprache. Der Name stammt aus der Zeit, als es nur Französisch gab.
+   * Er bleibt, weil er in jedem gespeicherten Set und in jeder Kartenkennung steckt.
+   */
   fr: string;
   de: string;
   /** Merkhinweis, zum Beispiel "wird wie ouvrir konjugiert". */
@@ -17,6 +25,8 @@ export interface Item extends RawItem {
   /** `${setId}:${fnv1a(fr)}`, siehe itemId() in text.ts. */
   id: string;
   setId: string;
+  /** Die Sprache der Lektion. */
+  lang: Foreign;
 }
 
 /** Lernstand einer Karte (Leitner-System). */
@@ -40,6 +50,8 @@ export interface SetData {
   items: RawItem[];
   /** Zeitpunkt des Anlegens in ms. Das neueste Set steht oben. */
   createdAt: number;
+  /** Die Sprache der Lektion. Fehlt sie, ist es Französisch. */
+  lang?: Foreign;
 }
 
 /** Ein Set im Abgleich. Gelöschte Sets bleiben als leerer Eintrag stehen, damit die Löschung mitwandert. */

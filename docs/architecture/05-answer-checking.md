@@ -48,7 +48,7 @@ The rules compare the content words (`contentWords`). Articles, pronouns and pla
 
 If the answer is still wrong, the app asks a cheap model (`gemini-flash-lite-latest`). It gives one of three verdicts.
 
-- `richtig`: The answer is correct French and means the same. A real synonym counts too.
+- `richtig`: The answer is correct in the language of the card and means the same. A real synonym counts too.
 - `form`: The word is right, the form is not. The child gets a second try.
 - `falsch`: Everything else.
 

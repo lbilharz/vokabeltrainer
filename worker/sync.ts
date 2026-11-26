@@ -5,6 +5,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as schema from "./db/schema";
 import { requireSession } from "./session";
+import { FOREIGN } from "../shared/lang";
 import { LIMITS } from "../shared/limits";
 
 export const sync = new Hono<{ Bindings: Env }>();
@@ -38,6 +39,8 @@ const setDataSchema = z.object({
     )
     .max(LIMITS.MAX_ITEMS_PER_SET),
   createdAt: z.number().int().min(0),
+  /** Die Sprache der Lektion. Fehlt sie, ist es Französisch. */
+  lang: z.enum(FOREIGN).optional(),
 });
 
 const setSchema = z.object({

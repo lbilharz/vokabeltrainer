@@ -11,7 +11,7 @@ import {
 } from "@shared/session";
 import { dayNumber, getCard } from "@shared/srs";
 import { applyResponse, mergeSets, outgoing, touch } from "@shared/sync";
-import type { CardState, Item, RawItem, SetDoc } from "@shared/types";
+import type { CardState, Foreign, Item, RawItem, SetDoc } from "@shared/types";
 import { Settings } from "./components/Settings";
 import { TEMPLATES, buildSets } from "./data/sets";
 import { type User, postSync } from "./lib/account";
@@ -192,10 +192,10 @@ export function Trainer({ user, onSignedOut }: Props) {
     if (updateWaiting && view.name === "home" && !settingsOpen && syncStatus !== "running") void loadNewerVersion();
   }, [updateWaiting, view.name, settingsOpen, syncStatus]);
 
-  // Für jedes französische Wort soll es eine Aufnahme geben. Das läuft im Hintergrund.
+  // Für jedes Wort soll es eine Aufnahme in seiner Sprache geben. Das läuft im Hintergrund.
   useEffect(() => {
-    const texts = sets.flatMap((set) => set.items.map((item) => item.fr));
-    if (texts.length > 0) void ensureAudio(texts);
+    const words = sets.flatMap((set) => set.items.map((item) => ({ text: item.fr, lang: item.lang })));
+    if (words.length > 0) void ensureAudio(words);
   }, [sets]);
 
   useEffect(() => {
@@ -272,7 +272,8 @@ export function Trainer({ user, onSignedOut }: Props) {
     );
     // Der Ton für die erste Aufgabe muss noch im Klick starten.
     const first = steps[0]!;
-    if (first.kind !== "type") speak(itemsById.get(first.itemId)!.fr, "fr", data.settings.rate);
+    const firstItem = itemsById.get(first.itemId)!;
+    if (first.kind !== "type") speak(firstItem.fr, firstItem.lang, data.settings.rate);
     open({ name: "session", steps, run: Date.now(), options }, "/ueben");
   };
 
@@ -344,14 +345,14 @@ export function Trainer({ user, onSignedOut }: Props) {
   const changeSettings = (settings: SettingsData) => setMeta(() => ({ settings }));
 
   /** Legt eine neue Lektion an und zeigt gleich deren Lernpfad. */
-  const addSet = (label: string, items: RawItem[]) => {
+  const addSet = (label: string, items: RawItem[], lang: Foreign) => {
     const now = Date.now();
     const id = `s${crypto.randomUUID().replace(/-/g, "").slice(0, 10)}`;
     setData((prev) => ({
       ...prev,
       sets: {
         ...prev.sets,
-        [id]: { id, t: now, deleted: false, data: { label, unit: ["Wort", "Wörter"], items, createdAt: now } },
+        [id]: { id, t: now, deleted: false, data: { label, unit: ["Wort", "Wörter"], items, createdAt: now, lang } },
       },
       setsDirty: [...prev.setsDirty, id],
       activeSet: id,
@@ -429,7 +430,7 @@ export function Trainer({ user, onSignedOut }: Props) {
           onStartTest={startTest}
           loading={!setsLoaded && syncStatus === "running"}
           onAddSet={() => open({ name: "add" }, "/neu")}
-          onAddSample={() => addSet(SAMPLE_LABEL, SAMPLE_ITEMS)}
+          onAddSample={() => addSet(SAMPLE_LABEL, SAMPLE_ITEMS, "fr")}
           userId={user.id}
           onRenameSet={renameActive}
           onStartToday={startToday}
@@ -509,7 +510,7 @@ export function Trainer({ user, onSignedOut }: Props) {
           onBack={goHome}
         />
       )}
-      {view.name === "add" && <AddSet onSave={addSet} onClose={goHome} />}
+      {view.name === "add" && <AddSet defaultLang={active?.lang ?? sets[0]?.lang ?? "fr"} onSave={addSet} onClose={goHome} />}
       {settingsOpen && (
         <Settings
           user={user}

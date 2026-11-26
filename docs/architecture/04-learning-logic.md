@@ -28,10 +28,10 @@ The app chooses the exercise from the learning state. The child does not choose 
 | Kind | What the child does |
 | --- | --- |
 | `intro` | See and hear a new word. Pick the German meaning from four answers. |
-| `gap` | See the German word. Fill the gaps in the French word. |
-| `type` | See the German word and type the French freely. |
+| `gap` | See the German word. Fill the gaps in the foreign word. |
+| `type` | See the German word and type the foreign word freely. |
 | `listenChoice` | Only listen. Pick the German meaning. |
-| `listenType` | Only listen. Type the French. |
+| `listenType` | Only listen. Type the foreign word. |
 
 Rules of the ladder:
 
@@ -41,7 +41,7 @@ Rules of the ladder:
 - In box 1 and 2, `gap` alternates with `type` (`GAP_MAX_BOX`). From box 3 on the child always writes freely.
 - If an entry has no letters to fill, `gap` becomes `type`.
 - Wrong choices come preferably from the same section of the lesson. Entries with the same German side do not count as wrong choices.
-- Two cards can have the same German side. Then the French side of each of them counts as right (`targetsFor`).
+- Two cards can have the same German side. Then the foreign side of each of them counts as right (`targetsFor`). The pool is always one lesson, so it never mixes languages.
 
 **Reason for `gap` and copying:** The jump from choosing to free writing was too big (see `docs/history/2026-11-23-learning-steps.md`).
 

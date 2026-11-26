@@ -1,5 +1,6 @@
+import { foreignOf } from "@shared/lang";
 import { itemId } from "@shared/text";
-import type { Item, SetData, SetDoc } from "@shared/types";
+import type { Foreign, Item, SetData, SetDoc } from "@shared/types";
 import saetze from "./saetze.json";
 import u2 from "./u2.json";
 
@@ -16,6 +17,8 @@ export interface SetView {
   id: string;
   label: string;
   unit: [string, string];
+  /** Die Sprache der Lektion. */
+  lang: Foreign;
   items: Item[];
   /** Zeitpunkt des Anlegens in ms. 0, wenn unbekannt (zum Beispiel bei Vorlagen ohne Datum). */
   createdAt: number;
@@ -27,14 +30,15 @@ export function buildSets(docs: Record<string, SetDoc>): SetView[] {
     .filter((doc): doc is SetDoc & { data: SetData } => !doc.deleted && doc.data !== null)
     .sort((a, b) => (b.data.createdAt || 0) - (a.data.createdAt || 0) || a.id.localeCompare(b.id))
     .map((doc) => {
+      const lang = foreignOf(doc.data.lang);
       const taken = new Set<string>();
       const items: Item[] = [];
       for (const raw of doc.data.items) {
         const id = itemId(doc.id, raw.fr);
         if (taken.has(id)) continue;
         taken.add(id);
-        items.push({ ...raw, id, setId: doc.id });
+        items.push({ ...raw, id, setId: doc.id, lang });
       }
-      return { id: doc.id, label: doc.data.label, unit: doc.data.unit, items, createdAt: doc.data.createdAt || 0 };
+      return { id: doc.id, label: doc.data.label, unit: doc.data.unit, lang, items, createdAt: doc.data.createdAt || 0 };
     });
 }

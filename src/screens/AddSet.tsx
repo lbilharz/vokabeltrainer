@@ -1,13 +1,16 @@
 import { type ChangeEvent, useRef, useState } from "react";
 import { defaultLessonName } from "@shared/dates";
-import type { RawItem } from "@shared/types";
+import { FOREIGN, LANG_NAME } from "@shared/lang";
+import type { Foreign, RawItem } from "@shared/types";
 import { Icon } from "../components/Icon";
 import { type CheckKind, type ExtractedItem, checkItems, extractPhoto } from "../lib/account";
 import { shrinkPhoto } from "../lib/image";
 import { LIMITS } from "@shared/limits";
 
 interface Props {
-  onSave: (label: string, items: RawItem[]) => void;
+  /** Die Sprache der aktuellen Lektion. Sie gilt, falls die App die Sprache der Seite nicht erkennt. */
+  defaultLang: Foreign;
+  onSave: (label: string, items: RawItem[], lang: Foreign) => void;
   onClose: () => void;
 }
 
@@ -44,9 +47,18 @@ const STAGE_TEXT: Record<Live["stage"], string> = {
 
 const MAX_AT_ONCE = 6;
 
+/** Ein Beispiel für den Namen der Lektion, so wie die Bücher ihre Abschnitte nennen. */
+const NAME_EXAMPLE: Record<Foreign, string> = { fr: "Unité 2, Volet 3", en: "Unit 2, Part A" };
+
 /** Neue Vokabeln: Foto aufnehmen, lesen lassen, prüfen, übernehmen. */
-export function AddSet({ onSave, onClose }: Props) {
+export function AddSet({ defaultLang, onSave, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>("start");
+  /**
+   * Die Sprache der Lektion. Die App erkennt sie auf dem Foto und schlägt sie vor.
+   * Auf der Kontrollseite kann das Kind sie ändern. Danach bleibt seine Wahl stehen.
+   */
+  const [lang, setLang] = useState<Foreign>(defaultLang);
+  const langPicked = useRef(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [label, setLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -61,9 +73,9 @@ export function AddSet({ onSave, onClose }: Props) {
    * Gegenprobe im Hintergrund: ein zweites Modell prüft, ob die Wortpaare zusammenpassen.
    * Sie markiert nur. Schlägt sie fehl, bleibt die Liste, wie sie ist.
    */
-  const runCheck = (page: Row[]) => {
+  const runCheck = (page: Row[], pageLang: Foreign) => {
     setChecking((n) => n + 1);
-    checkItems(page.map((row) => ({ fr: row.fr, de: row.de })))
+    checkItems(page.map((row) => ({ fr: row.fr, de: row.de })), pageLang)
       .then((flags) => {
         const byKey = new Map(flags.map((flag) => [page[flag.i]?.key, flag.kind]));
         setRows((prev) =>
@@ -100,7 +112,7 @@ export function AddSet({ onSave, onClose }: Props) {
       setProgress({ current: index + 1, total: files.length });
       setLive({ stage: "sending", sent: 0, words: [] });
       try {
-        const result = await extractPhoto(await shrinkPhoto(file), (event) => {
+        const result = await extractPhoto(await shrinkPhoto(file), lang, (event) => {
           setLive((prev) => {
             if (event.type === "sending") {
               // Ist alles gesendet, wartet die App auf die Bestätigung des Servers.
@@ -122,7 +134,9 @@ export function AddSet({ onSave, onClose }: Props) {
           reason: check ? DIFFERENT_READINGS : undefined,
         }));
         setRows((prev) => [...prev, ...rowsOfPage]);
-        runCheck(rowsOfPage);
+        // Die erkannte Sprache ist ein Vorschlag. Hat das Kind schon selbst gewählt, bleibt es dabei.
+        if (!langPicked.current) setLang(result.lang);
+        runCheck(rowsOfPage, result.lang);
         added += rowsOfPage.length;
         // Vorschlag für den Namen: die Überschrift von der Seite, wenn es eine gab.
         setLabel((prev) => prev || result.items.find((item) => item.c)?.c || "");
@@ -163,8 +177,31 @@ export function AddSet({ onSave, onClose }: Props) {
           ...(note ? { n: note } : {}),
         };
       }),
+      lang,
     );
   };
+
+  const langPicker = (
+    <div className="form-field">
+      <strong id="lang-label">Sprache der Lektion</strong>
+      <div className="segments two" role="group" aria-labelledby="lang-label">
+        {FOREIGN.map((code) => (
+          <button
+            key={code}
+            type="button"
+            className={code === lang ? "on" : ""}
+            aria-pressed={code === lang}
+            onClick={() => {
+              langPicked.current = true;
+              setLang(code);
+            }}
+          >
+            {LANG_NAME[code]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   const inputs = (
     <>
@@ -202,7 +239,7 @@ export function AddSet({ onSave, onClose }: Props) {
             {/* Die letzten Wörter, das neueste unten. Reine Zier, der Zähler sagt dasselbe. */}
             <ul className="reading-words" aria-hidden="true">
               {live.words.slice(-5).map((word, index, shown) => (
-                <li key={`${found - shown.length + index}`} lang="fr">
+                <li key={`${found - shown.length + index}`} lang={lang}>
                   {word}
                 </li>
               ))}
@@ -251,6 +288,8 @@ export function AddSet({ onSave, onClose }: Props) {
           </p>
         )}
 
+        {langPicker}
+
         <div className="form-field">
           <label htmlFor="setname">Name der Lektion</label>
           <input
@@ -258,7 +297,7 @@ export function AddSet({ onSave, onClose }: Props) {
             type="text"
             value={label}
             maxLength={LIMITS.MAX_LABEL_CHARS}
-            placeholder="Unité 2, Volet 3"
+            placeholder={NAME_EXAMPLE[lang]}
             onChange={(event) => setLabel(event.target.value)}
           />
         </div>
@@ -271,9 +310,9 @@ export function AddSet({ onSave, onClose }: Props) {
                 <input
                   className="row-fr"
                   type="text"
-                  lang="fr"
+                  lang={lang}
                   value={row.fr}
-                  aria-label={`Französisch, Zeile ${index + 1}`}
+                  aria-label={`${LANG_NAME[lang]}, Zeile ${index + 1}`}
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}

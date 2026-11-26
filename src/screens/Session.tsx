@@ -5,9 +5,10 @@ import { closestOf, copySlots, copyTarget, gapSlots, markDiff, rateGaps } from "
 import { getCard, introduce, rate } from "@shared/srs";
 import { justMastered, streakAfter, streakLine } from "@shared/cheer";
 import { type Near, ruleTyped } from "@shared/answer";
+import { LANG_NAME } from "@shared/lang";
 import { LIMITS } from "@shared/limits";
 import { norm } from "@shared/text";
-import type { CardState, Item, Progress } from "@shared/types";
+import type { CardState, Foreign, Item, Progress } from "@shared/types";
 import { CopyWord } from "../components/CopyWord";
 import { Icon } from "../components/Icon";
 import { judgeAnswer } from "../lib/account";
@@ -41,16 +42,28 @@ const NEAR_NOTES: Record<Near, string> = {
   typo: "Achte beim nächsten Mal auf die Schreibweise. So schreibt man es:",
 };
 
+/** Der Hinweis, wenn von mehreren Formen nur die erste da steht ("go" statt "go, went, gone"). */
+const PARTIAL_HINT = "Fast. Hier gehören mehrere Formen dazu. Schreibe sie alle.";
+
 /** Der Hinweis auf eine andere Form, wenn es keinen genaueren gibt. */
 const FORM_HINT = "Fast. Das Wort stimmt, aber die Form nicht. Schau noch einmal genau auf das Deutsche.";
 
-const PROMPTS: Record<Step["kind"], string> = {
-  intro: "Was heißt das auf Deutsch?",
-  gap: "Wie heißt das auf Französisch? Fülle die Lücken.",
-  type: "Wie heißt das auf Französisch?",
-  listenChoice: "Hör zu. Was heißt das auf Deutsch?",
-  listenType: "Hör zu. Schreibe, was du hörst.",
-};
+/** Die Frage über der Aufgabe. Sie nennt die Sprache, denn eine Runde kann Wörter aus zwei Sprachen mischen. */
+function promptFor(kind: Step["kind"], lang: Foreign): string {
+  const name = LANG_NAME[lang];
+  switch (kind) {
+    case "intro":
+      return "Was heißt das auf Deutsch?";
+    case "gap":
+      return `Wie heißt das auf ${name}? Fülle die Lücken.`;
+    case "type":
+      return `Wie heißt das auf ${name}?`;
+    case "listenChoice":
+      return "Hör zu. Was heißt das auf Deutsch?";
+    case "listenType":
+      return "Hör zu. Schreibe, was du hörst.";
+  }
+}
 
 function closeKeyboard(): void {
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -129,7 +142,8 @@ export function Session(props: Props) {
     if (result && !copying) nextRef.current?.focus();
   }, [result, copying]);
 
-  const say = () => speak(item.fr, "fr", settings.rate);
+  const lang = item.lang;
+  const say = () => speak(item.fr, lang, settings.rate);
   const copyText = copyTarget(item.fr);
   const sheetOpen = result !== null && !copying;
   const hint = formHint ?? (articleHint ? "Fast richtig. Es fehlt der Artikel." : null);
@@ -163,7 +177,13 @@ export function Session(props: Props) {
       setArticleHint(true);
       inputRef.current?.focus();
     } else if (ruling.type === "formHint") {
-      setFormHint(ruling.other ? `Das ist „${ruling.other.de}“. Hier ist eine andere Form gefragt.` : FORM_HINT);
+      setFormHint(
+        ruling.partial
+          ? PARTIAL_HINT
+          : ruling.other
+            ? `Das ist „${ruling.other.de}“. Hier ist eine andere Form gefragt.`
+            : FORM_HINT,
+      );
       inputRef.current?.focus();
     } else if (ruling.askJudge && canJudge()) {
       askJudge();
@@ -183,7 +203,7 @@ export function Session(props: Props) {
   const askJudge = () => {
     const round = ++judgeRound.current;
     setJudging(true);
-    void judgeAnswer(item.de, item.fr.trim(), typed.trim()).then((judgement) => {
+    void judgeAnswer(item.de, item.fr.trim(), typed.trim(), lang).then((judgement) => {
       if (round !== judgeRound.current) return;
       setJudging(false);
       if (judgement.verdict === "correct") {
@@ -271,7 +291,8 @@ export function Session(props: Props) {
       return;
     }
     // Der Ton muss noch im Klick starten, nicht erst nach dem Neuzeichnen.
-    if (nextStep.kind !== "type") speak(itemsById.get(nextStep.itemId)!.fr, "fr", settings.rate);
+    const nextItem = itemsById.get(nextStep.itemId)!;
+    if (nextStep.kind !== "type") speak(nextItem.fr, nextItem.lang, settings.rate);
     setPos(pos + 1);
     setTyped("");
     setChoice(null);
@@ -312,11 +333,11 @@ export function Session(props: Props) {
             {plainTitle}
           </span>
           <p className="prompt">Schreib es einmal ab.</p>
-          <CopyWord key={pos} target={copyText} onDone={copied} />
+          <CopyWord key={pos} target={copyText} lang={lang} onDone={copied} />
           <p className="copy-de">{item.de}</p>
           {!hasChoices && norm(typed) && (
             <p className="copy-yours">
-              Du hast geschrieben: <s lang="fr">{typed}</s>
+              Du hast geschrieben: <s lang={lang}>{typed}</s>
             </p>
           )}
         </div>
@@ -325,7 +346,7 @@ export function Session(props: Props) {
       {!copying && (
       <div className="question">
         {step.kind === "intro" && <span className="chip">Neu</span>}
-        <p className="prompt">{PROMPTS[step.kind]}</p>
+        <p className="prompt">{promptFor(step.kind, lang)}</p>
 
         {(step.kind === "type" || step.kind === "gap") && <h1 className="word">{item.de}</h1>}
 
@@ -334,7 +355,7 @@ export function Session(props: Props) {
             <button className="speak-btn" aria-label={`${item.fr} anhören`} onClick={say}>
               <Icon name="speaker" size={26} stroke={2.2} />
             </button>
-            <h1 className="word" lang="fr">
+            <h1 className="word" lang={lang}>
               {item.fr}
             </h1>
           </div>
@@ -353,12 +374,12 @@ export function Session(props: Props) {
           {result ? (
             // Nach der Aufgabe steht das ganze Wort da. Das Feld nimmt nichts mehr an.
             <div className={`copy-field solved ${result.near ? "near" : result.correct ? "right" : "wrong"}`}>
-              <div className="copy-word" lang="fr">
+              <div className="copy-word" lang={lang}>
                 {copyText}
               </div>
             </div>
           ) : (
-            <CopyWord key={pos} mode="gap" target={copyText} onDone={gapDone} />
+            <CopyWord key={pos} mode="gap" target={copyText} lang={lang} onDone={gapDone} />
           )}
         </div>
       ) : hasChoices ? (
@@ -393,14 +414,14 @@ export function Session(props: Props) {
             check();
           }}
         >
-          <label htmlFor="answer">Deine Antwort auf Französisch</label>
+          <label htmlFor="answer">Deine Antwort auf {LANG_NAME[lang]}</label>
           <input
             key={pos}
             id="answer"
             ref={inputRef}
             className={result ? (result.near || result.also ? "near" : result.correct ? "right" : "wrong") : ""}
             type="text"
-            lang="fr"
+            lang={lang}
             value={typed}
             readOnly={result !== null || judging}
             onChange={(event) => setTyped(event.target.value)}
@@ -463,12 +484,12 @@ export function Session(props: Props) {
               <p className="sheet-note">Eine Stelle hat nicht gleich gepasst. So schreibt man es:</p>
             ) : (
               <p className="sheet-note">
-                Deine Antwort: <span lang="fr">{typed.trim()}</span>. {NEAR_NOTES[result.near]}
+                Deine Antwort: <span lang={lang}>{typed.trim()}</span>. {NEAR_NOTES[result.near]}
               </p>
             ))}
           <div className="solution">
             <div className="solution-text">
-              <div className={`solution-fr ${result.mastered ? "cheer-set" : ""}`} lang="fr">
+              <div className={`solution-fr ${result.mastered ? "cheer-set" : ""}`} lang={lang}>
                 {nearMarks
                   ? nearMarks.map((mark, index) => (mark.miss ? <mark key={index}>{mark.ch}</mark> : mark.ch))
                   : item.fr}

@@ -24,6 +24,7 @@
     "shared/base64.ts",
     "shared/dates.ts",
     "shared/extract.ts",
+    "shared/lang.ts",
     "shared/limits.ts",
     "shared/reminder.ts",
     "shared/text.ts",

@@ -1,26 +1,35 @@
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
+import { FOREIGN } from "../shared/lang";
 import { LIMITS } from "../shared/limits";
 import { fnv1a, sayText } from "../shared/text";
+import type { Foreign } from "../shared/types";
 import * as schema from "./db/schema";
 import { requireSession } from "./session";
 import { spend } from "./usage";
 
 export const audio = new Hono<{ Bindings: Env }>();
 
-/** Stimme, Modell, Format und Tempo. Gleich wie in tools/render_tts.py. Nur hier ändern. */
-const VOICE_ID = "O31r762Gb3WFygrEOGh0";
+/**
+ * Stimme, Modell, Format und Tempo. Die französische Stimme ist dieselbe wie in tools/render_tts.py.
+ * Jede Sprache hat eine Stimme, die sie als Muttersprache spricht. Sonst klingt "table" französisch.
+ * fr: "Victoria - Content Creator". en: "Alice - Clear, Engaging Educator", britisch wie im Schulbuch.
+ */
+const VOICE_IDS: Record<Foreign, string> = { fr: "O31r762Gb3WFygrEOGh0", en: "Xb7hH8MSUJpSbSDYk0k2" };
 const MODEL_ID = "eleven_multilingual_v2";
 const OUTPUT_FORMAT = "mp3_44100_128";
 const SPEED = 0.95;
-const ELEVENLABS_URL = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=${OUTPUT_FORMAT}`;
+const elevenLabsUrl = (lang: Foreign) =>
+  `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_IDS[lang]}?output_format=${OUTPUT_FORMAT}`;
 
 const MAX_RENDERS_PER_CALL = 3;
 const TIMEOUT_MS = 30_000;
 
 const requestSchema = z.object({
   texts: z.array(z.string().min(1).max(LIMITS.MAX_AUDIO_CHARS)).min(1).max(LIMITS.MAX_AUDIO_TEXTS),
+  /** Die Sprache der Texte. Ältere Fassungen der App schicken sie nicht. Dann ist es Französisch. */
+  lang: z.enum(FOREIGN).default("fr"),
 });
 
 type Stopped = "limit" | "unconfigured" | "failed";
@@ -28,11 +37,11 @@ type Stopped = "limit" | "unconfigured" | "failed";
 const NOT_FOUND = { error: "Nicht gefunden." };
 
 /** Ein Text wird immer einzeln gerendert. Mehrere Texte in einer Anfrage machen die Stimme zu schnell. */
-async function renderOne(apiKey: string, text: string): Promise<ArrayBuffer | null> {
-  let spoken = sayText(text, "fr");
+async function renderOne(apiKey: string, text: string, lang: Foreign): Promise<ArrayBuffer | null> {
+  let spoken = sayText(text, lang);
   if (!/[.?!]$/.test(spoken)) spoken += "."; // Mit Punkt endet die Betonung natürlich.
   try {
-    const response = await fetch(ELEVENLABS_URL, {
+    const response = await fetch(elevenLabsUrl(lang), {
       method: "POST",
       headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -55,7 +64,8 @@ async function renderOne(apiKey: string, text: string): Promise<ArrayBuffer | nu
 }
 
 /**
- * Sorgt dafür, dass zu den französischen Texten eine mp3 im Speicher liegt.
+ * Sorgt dafür, dass zu den Texten einer Sprache eine mp3 im Speicher liegt.
+ * Jede Sprache hat ihren eigenen Ordner. Dasselbe Wort klingt in zwei Sprachen verschieden.
  *
  * Vorhandene Dateien gehen in `ready`. Fehlende werden nacheinander gerendert,
  * höchstens MAX_RENDERS_PER_CALL pro Aufruf. Der Rest steht in `pending`.
@@ -65,19 +75,19 @@ audio.post("/audio/ensure", async (context) => {
   const session = await requireSession(context, db);
 
   // Kaputtes JSON und falsche Felder werden in worker/index.ts zu 400.
-  const { texts } = requestSchema.parse(await context.req.json());
+  const { texts, lang } = requestSchema.parse(await context.req.json());
 
   // Pro Hash ein Text. Der Hash gilt für den Text genau so, wie er kam.
   const byHash = new Map<string, string>();
   for (const text of texts) {
-    if (!sayText(text, "fr")) continue; // Nichts zu sprechen.
+    if (!sayText(text, lang)) continue; // Nichts zu sprechen.
     const hash = fnv1a(text);
     if (!byHash.has(hash)) byHash.set(hash, text);
   }
 
   // Alle Nachfragen beim Speicher laufen zugleich.
   const hashes = [...byHash.keys()];
-  const heads = await Promise.all(hashes.map((hash) => context.env.AUDIO.head(`fr/${hash}.mp3`)));
+  const heads = await Promise.all(hashes.map((hash) => context.env.AUDIO.head(`${lang}/${hash}.mp3`)));
   const ready = hashes.filter((_, index) => heads[index]);
   const missing = hashes.filter((_, index) => !heads[index]);
 
@@ -108,13 +118,13 @@ audio.post("/audio/ensure", async (context) => {
     }
 
     renders++;
-    const bytes = await renderOne(apiKey, byHash.get(hash)!);
+    const bytes = await renderOne(apiKey, byHash.get(hash)!, lang);
     if (!bytes) {
       pending.push(...rest());
       stopped = "failed";
       break;
     }
-    await context.env.AUDIO.put(`fr/${hash}.mp3`, bytes, { httpMetadata: { contentType: "audio/mpeg" } });
+    await context.env.AUDIO.put(`${lang}/${hash}.mp3`, bytes, { httpMetadata: { contentType: "audio/mpeg" } });
     ready.push(hash);
   }
 
@@ -141,10 +151,12 @@ function parseRange(header: string, size: number): { start: number; end: number 
 }
 
 /** Liefert eine mp3. Ohne Anmeldung, die Dateien sind nicht geheim. Mit Range, weil Safari es für Audio braucht. */
-audio.get("/audio/fr/:file", async (context) => {
+audio.get("/audio/:lang/:file", async (context) => {
+  const lang = context.req.param("lang");
   const file = context.req.param("file");
+  if (!(FOREIGN as readonly string[]).includes(lang)) return context.json(NOT_FOUND, 404);
   if (!/^[0-9a-f]{8}\.mp3$/.test(file)) return context.json(NOT_FOUND, 404);
-  const key = `fr/${file}`;
+  const key = `${lang}/${file}`;
 
   const head = await context.env.AUDIO.head(key);
   if (!head) return context.json(NOT_FOUND, 404);
